@@ -108,10 +108,19 @@ public sealed class PaperPosition
 
     public decimal Notional => MarkPrice * Quantity * Multiplier;
 
+    /// <summary>Maior ganho em aberto já visto, em pontos/preço (MFE).</summary>
+    public decimal MaxFavorable { get; private set; }
+
+    /// <summary>Maior perda em aberto já vista, em pontos/preço, como número positivo (MAE).</summary>
+    public decimal MaxAdverse { get; private set; }
+
     public void UpdateMark(decimal price, DateTimeOffset time)
     {
         MarkPrice = Guard.Positive(price, nameof(price));
         MarkTime = time;
+        var move = (price - EntryPrice) * (int)Direction;
+        MaxFavorable = Math.Max(MaxFavorable, move);
+        MaxAdverse = Math.Max(MaxAdverse, -move);
     }
 
     public void CountBar() => BarsHeld++;

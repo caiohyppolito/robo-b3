@@ -197,4 +197,17 @@ public class BacktestEngineTests
 
         Assert.Throws<Common.DomainException>(() => Run(TestBars.Linear(10, 100m, 1m), strategy));
     }
+
+    [Fact]
+    public void Operacao_registra_excursoes_pela_maxima_e_minima_das_barras()
+    {
+        var bars = TestBars.FromCloses(100, 100, 104, 97, 102);
+        var strategy = new ScriptedStrategy((_, _) => new StrategySignal(PositionDirection.Long));
+
+        var trade = Assert.Single(Run(bars, strategy).Trades);
+
+        // Entrada a 100 (abertura da barra 1); máxima 104 x 1,01 = 105,04; mínima 97 x 0,99 = 96,03.
+        Assert.Equal(5.04m, trade.MfePercent);
+        Assert.Equal(3.97m, trade.MaePercent);
+    }
 }

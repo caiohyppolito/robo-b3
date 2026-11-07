@@ -3,6 +3,7 @@ import { api, executionApi, session, setUnauthorizedHandler, type ExecutionStatu
 import { AssetsTable } from "./components/AssetsTable";
 import { AuditList } from "./components/AuditList";
 import { BacktestPage } from "./components/backtest/BacktestPage";
+import { EmergencyCard } from "./components/EmergencyCard";
 import { LearningPage } from "./components/learning/LearningPage";
 import { Login } from "./components/Login";
 import { OperationPage } from "./components/operation/OperationPage";
@@ -98,6 +99,7 @@ export function App() {
                 </div>
                 <StatusPanel status={status} onChange={refresh} />
                 <RiskLimitsForm limits={status.limits} onSaved={refresh} />
+                <EmergencyCard onDone={refresh} />
               </>
             ) : (
               <p className="muted">Carregando…</p>

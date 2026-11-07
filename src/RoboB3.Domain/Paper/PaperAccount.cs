@@ -137,7 +137,9 @@ public sealed class PaperAccount
             invested == 0 ? 0 : Math.Round(net / invested * 100m, 2),
             position.FeatureVector,
             position.Probability,
-            time);
+            time,
+            Math.Round(position.MaxAdverse / position.EntryPrice * 100m, 3),
+            Math.Round(position.MaxFavorable / position.EntryPrice * 100m, 3));
 
         var fill = new PaperFill(position.Id, position.ContractSymbol, isBuy ? OrderSide.Buy : OrderSide.Sell, position.Quantity,
             Math.Round(price, 4), Math.Round(cost, 2), Math.Round(net, 2), reason, time, Mode);

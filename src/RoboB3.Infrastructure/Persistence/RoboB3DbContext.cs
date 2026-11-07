@@ -37,6 +37,8 @@ public sealed class RoboB3DbContext(DbContextOptions<RoboB3DbContext> options) :
 
     public DbSet<TradingDecision> TradingDecisions => Set<TradingDecision>();
 
+    public DbSet<Domain.Execution.OrderIntent> OrderIntents => Set<Domain.Execution.OrderIntent>();
+
     public DbSet<Domain.Execution.ExecutionSettings> ExecutionSettings => Set<Domain.Execution.ExecutionSettings>();
 
     Task IUnitOfWork.SaveChangesAsync(CancellationToken cancellationToken) => SaveChangesAsync(cancellationToken);

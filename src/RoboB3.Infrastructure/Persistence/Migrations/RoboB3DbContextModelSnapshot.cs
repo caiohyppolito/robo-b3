@@ -215,6 +215,100 @@ namespace RoboB3.Infrastructure.Persistence.Migrations
                     b.ToTable("ExecutionSettings", "robo");
                 });
 
+            modelBuilder.Entity("RoboB3.Domain.Execution.OrderIntent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("AssignmentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long?>("BrokerTicket")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("ClientOrderId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<decimal?>("FillPrice")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("decimal(18,6)");
+
+                    b.Property<int?>("FillQuantity")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("LatencyMs")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Message")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Mode")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<Guid?>("PositionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<decimal>("ReferencePrice")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("decimal(18,6)");
+
+                    b.Property<string>("Side")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(15)
+                        .HasColumnType("nvarchar(15)");
+
+                    b.Property<decimal?>("StopLoss")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("decimal(18,6)");
+
+                    b.Property<string>("StrategyKey")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Symbol")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClientOrderId")
+                        .IsUnique();
+
+                    b.HasIndex("Mode", "Status");
+
+                    b.ToTable("OrderIntents", "robo");
+                });
+
             modelBuilder.Entity("RoboB3.Domain.Learning.MetaModel", b =>
                 {
                     b.Property<Guid>("Id")
@@ -337,6 +431,14 @@ namespace RoboB3.Infrastructure.Persistence.Migrations
                     b.Property<string>("Features")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal?>("MaePercent")
+                        .HasPrecision(10, 4)
+                        .HasColumnType("decimal(10,4)");
+
+                    b.Property<decimal?>("MfePercent")
+                        .HasPrecision(10, 4)
+                        .HasColumnType("decimal(10,4)");
 
                     b.Property<double?>("ModelProbability")
                         .HasColumnType("float");
@@ -604,6 +706,14 @@ namespace RoboB3.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("MarkTime")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<decimal>("MaxAdverse")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("decimal(18,6)");
+
+                    b.Property<decimal>("MaxFavorable")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("decimal(18,6)");
+
                     b.Property<string>("Mode")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -702,6 +812,15 @@ namespace RoboB3.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("BarTime")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<string>("ClientOrderId")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("CodeVersion")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<string>("Contract")
                         .IsRequired()
                         .HasMaxLength(30)
@@ -712,15 +831,26 @@ namespace RoboB3.Infrastructure.Persistence.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
 
+                    b.Property<string>("Features")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("Mode")
                         .IsRequired()
                         .HasMaxLength(10)
                         .HasColumnType("nvarchar(10)");
 
+                    b.Property<Guid?>("ModelId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("Outcome")
                         .IsRequired()
                         .HasMaxLength(10)
                         .HasColumnType("nvarchar(10)");
+
+                    b.Property<string>("Parameters")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<decimal?>("Price")
                         .HasPrecision(18, 6)

@@ -16,6 +16,7 @@ import {
 } from "../../api";
 import { formatBrl, formatDateTime, formatNumber, formatPercent } from "../../format";
 import { ExecutionModeCard } from "./ExecutionModeCard";
+import { OrdersTable } from "./OrdersTable";
 
 const REFRESH_MS = 10_000;
 const TIMEFRAMES: { value: Timeframe; label: string }[] = [
@@ -290,6 +291,11 @@ export function OperationPage() {
           </div>
         )}
         <AssignmentForm strategies={strategies} assets={assets} busy={busy !== null} onSubmit={(body) => act("create", () => paperApi.createAssignment(body))} />
+      </section>
+
+      <section className="card">
+        <h2>Ordens enviadas</h2>
+        <OrdersTable refreshKey={account?.fills.length ?? 0} />
       </section>
 
       <section className="card">

@@ -33,8 +33,12 @@ public sealed class TradeJournalEntry
         decimal returnPercent,
         FeatureVector? features,
         double? modelProbability,
-        DateTimeOffset recordedAt)
+        DateTimeOffset recordedAt,
+        decimal? maePercent = null,
+        decimal? mfePercent = null)
     {
+        MaePercent = maePercent;
+        MfePercent = mfePercent;
         if (exitDate < entryDate)
         {
             throw new DomainException("A saída não pode ser anterior à entrada.");
@@ -78,6 +82,12 @@ public sealed class TradeJournalEntry
     public double? ModelProbability { get; private set; }
 
     public DateTimeOffset RecordedAt { get; private set; }
+
+    /// <summary>Pior momento da operação (excursão adversa máxima), em % do preço de entrada.</summary>
+    public decimal? MaePercent { get; private set; }
+
+    /// <summary>Melhor momento da operação (excursão favorável máxima), em % do preço de entrada.</summary>
+    public decimal? MfePercent { get; private set; }
 
     public bool IsWin => NetProfit > 0;
 

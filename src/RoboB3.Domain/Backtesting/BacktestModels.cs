@@ -65,7 +65,9 @@ public sealed record BacktestTrade(
     IReadOnlyList<float>? EntryFeatures = null,
     double? EntryProbability = null,
     DateTimeOffset? EntryTime = null,
-    DateTimeOffset? ExitTime = null);
+    DateTimeOffset? ExitTime = null,
+    decimal? MaePercent = null,
+    decimal? MfePercent = null);
 
 /// <summary>Patrimônio da estratégia, do "comprar e segurar" com 100% do capital e do CDI no mesmo dia.</summary>
 public sealed record EquityPoint(DateOnly Date, decimal Equity, decimal Benchmark, decimal RiskFree);

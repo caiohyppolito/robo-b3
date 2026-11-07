@@ -37,8 +37,14 @@ internal sealed class FakeFeed(FakeTimeProvider clock) : IMarketDataFeed
     /// <summary>Quando definido, as barras terminam aqui (mercado fechado) em vez de no horário atual.</summary>
     public DateTimeOffset? LastBarOpen { get; set; }
 
-    public Task<FeedStatus> GetStatusAsync(CancellationToken cancellationToken) =>
-        Task.FromResult(new FeedStatus(Connected, "teste", "Servidor", 1, IsDemo, "Corretora", Connected ? null : "terminal fechado"));
+    /// <summary>Atraso artificial, para provocar ciclos simultâneos.</summary>
+    public TimeSpan Delay { get; set; }
+
+    public async Task<FeedStatus> GetStatusAsync(CancellationToken cancellationToken)
+    {
+        await Task.Delay(Delay, cancellationToken);
+        return new FeedStatus(Connected, "teste", "Servidor", 1, IsDemo, "Corretora", Connected ? null : "terminal fechado");
+    }
 
     public Task<string> ResolveSymbolAsync(Asset asset, CancellationToken cancellationToken) =>
         Task.FromResult(asset.IsFuture ? $"{asset.Symbol}Z26" : asset.Symbol);
@@ -134,7 +140,8 @@ public class PaperTradingTests
 {
     // Segunda-feira, 14h em Brasília.
     private readonly FakeTimeProvider _clock = new(new DateTimeOffset(2026, 11, 9, 17, 0, 0, TimeSpan.Zero));
-    private readonly RoboB3DbContext _db = new(new DbContextOptionsBuilder<RoboB3DbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+    private readonly string _dbName = Guid.NewGuid().ToString();
+    private readonly RoboB3DbContext _db;
     private readonly FakeFeed _feed;
     private readonly TradingState _state;
     private readonly Domain.Execution.ExecutionSettings _execution;
@@ -142,35 +149,44 @@ public class PaperTradingTests
 
     public PaperTradingTests()
     {
+        _db = NewContext();
         _feed = new FakeFeed(_clock);
         _execution = new Domain.Execution.ExecutionSettings(_clock.GetUtcNow());
         _state = TradingState.CreateHalted(_clock.GetUtcNow());
         _state.Resume("teste", _clock.GetUtcNow());
     }
 
+    private RoboB3DbContext NewContext() => new(new DbContextOptionsBuilder<RoboB3DbContext>().UseInMemoryDatabase(_dbName).Options);
+
     private sealed class FixedState(TradingState state) : ITradingStateRepository
     {
         public Task<TradingState> GetAsync(CancellationToken cancellationToken) => Task.FromResult(state);
     }
 
-    private PaperTradingService Service() => new(
+    private PaperTradingService Service(RoboB3DbContext? context = null)
+    {
+        var db = context ?? _db;
+        return new(
         _feed,
-        new PaperRepository(_db),
-        new StrategyAssignmentRepository(_db),
-        new AssetRepository(_db),
+        new PaperRepository(db),
+        new StrategyAssignmentRepository(db),
+        new AssetRepository(db),
         new FixedState(_state),
         new FixedRiskSettings(),
-        new TradeJournalRepository(_db),
+        new TradeJournalRepository(db),
         new FakeExecutionSettings(_execution),
         new FakeExecutors(new Application.Execution.SimulatedOrderExecutor(Options.Create(new BacktestOptions { SlippagePercent = 0 })), _broker),
-        LearningIntegrationTests.Service(_db),
-        new AuditLog(_db),
-        _db,
+        new OrderIntentRepository(db),
+        new Execution.SqlServerTradingLock(db),
+        LearningIntegrationTests.Service(db),
+        new AuditLog(db),
+        db,
         Options.Create(new PaperTradingOptions()),
         Options.Create(new BacktestOptions { SlippagePercent = 0, FeesPercent = 0, FuturesFeePerContract = 0 }),
         Options.Create(new TradingCapitalOptions()),
         _clock,
         NullLogger<PaperTradingService>.Instance);
+    }
 
     private async Task<StrategyAssignment> AssignAsync(string symbol, string strategy, bool dayTrade = false, bool enabled = true)
     {
@@ -603,5 +619,125 @@ public class PaperTradingTests
         var offline = await service.GetAsync(CancellationToken.None);
         Assert.False(offline.Connected);
         Assert.Empty(offline.Items);
+    }
+
+    // ---------- Robustez: concorrência, reinício, emergência, rastreabilidade ----------
+
+    [Fact]
+    public async Task Dois_ciclos_simultaneos_nao_enviam_a_mesma_ordem_duas_vezes()
+    {
+        await AssignInDemoAsync();
+        _feed.Delay = TimeSpan.FromMilliseconds(300);
+        await using var first = NewContext();
+        await using var second = NewContext();
+
+        var reports = await Task.WhenAll(Service(first).RunCycleAsync(CancellationToken.None), Service(second).RunCycleAsync(CancellationToken.None));
+
+        Assert.Single(_broker.Sent);
+        Assert.Contains(reports, r => r.Messages.Contains("Outro ciclo está em andamento; este foi ignorado."));
+    }
+
+    [Fact]
+    public async Task Entrada_grava_intencao_antes_do_envio_com_slippage_e_latencia()
+    {
+        await AssignInDemoAsync();
+
+        await Service().RunCycleAsync(CancellationToken.None);
+
+        var intent = Assert.Single(await _db.OrderIntents.ToListAsync());
+        Assert.Equal(Domain.Execution.OrderIntentStatus.Filled, intent.Status);
+        Assert.Equal(130_005m, intent.ReferencePrice);
+        Assert.Equal(5m, intent.Slippage);
+        Assert.NotNull(intent.LatencyMs);
+        var decision = await _db.TradingDecisions.SingleAsync();
+        Assert.Equal(intent.ClientOrderId, decision.ClientOrderId);
+        Assert.Equal(intent.PositionId, (await _db.PaperPositions.SingleAsync()).Id);
+    }
+
+    [Fact]
+    public async Task Apos_reinicio_entrada_executada_na_corretora_e_adotada_sem_reenviar()
+    {
+        var assignment = await AssignInDemoAsync();
+        // Simula a queda: a intenção foi gravada e a ordem executou na corretora, mas o livro não registrou.
+        var intent = new Domain.Execution.OrderIntent(Domain.Execution.ExecutionMode.Mt5Demo, "e-queda-0001", Domain.Execution.OrderPurpose.Entry, "WINZ26",
+            Domain.Trading.OrderSide.Buy, 2, 130_000m, 129_800m, assignment.Id, null, StrategyKeys.BuyAndHold, "entrada", _clock.GetUtcNow());
+        _db.OrderIntents.Add(intent);
+        await _db.SaveChangesAsync();
+        _broker.Positions.Add(new BrokerPosition(777, "WINZ26", Domain.Trading.OrderSide.Buy, 2, 130_010m, 129_800m, true));
+        assignment.MarkProcessed(_clock.GetUtcNow());
+        await _db.SaveChangesAsync();
+
+        var report = await Service().RunCycleAsync(CancellationToken.None);
+
+        Assert.Empty(_broker.Sent);
+        Assert.False(_state.IsHalted);
+        var position = await _db.PaperPositions.SingleAsync();
+        Assert.Equal(777, position.BrokerTicket);
+        Assert.Equal(130_010m, position.EntryPrice);
+        Assert.Equal(Domain.Execution.OrderIntentStatus.Recovered, (await _db.OrderIntents.SingleAsync()).Status);
+        Assert.Contains(report.Messages, m => m.Contains("adotada pelo livro", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Apos_reinicio_entrada_sem_posicao_na_corretora_vira_nao_confirmada()
+    {
+        var assignment = await AssignInDemoAsync();
+        _db.OrderIntents.Add(new Domain.Execution.OrderIntent(Domain.Execution.ExecutionMode.Mt5Demo, "e-queda-0002", Domain.Execution.OrderPurpose.Entry, "WINZ26",
+            Domain.Trading.OrderSide.Buy, 2, 130_000m, null, assignment.Id, null, StrategyKeys.BuyAndHold, "entrada", _clock.GetUtcNow()));
+        assignment.MarkProcessed(_clock.GetUtcNow());
+        await _db.SaveChangesAsync();
+
+        await Service().RunCycleAsync(CancellationToken.None);
+
+        Assert.Empty(_broker.Sent);
+        Assert.Empty(await _db.PaperPositions.ToListAsync());
+        Assert.Equal(Domain.Execution.OrderIntentStatus.Unconfirmed, (await _db.OrderIntents.SingleAsync()).Status);
+    }
+
+    [Fact]
+    public async Task Zerar_tudo_trava_e_encerra_todas_as_posicoes_do_modo()
+    {
+        await AssignInDemoAsync();
+        await Service().RunCycleAsync(CancellationToken.None);
+
+        var report = await Service().FlattenAllAsync("caio", CancellationToken.None);
+
+        Assert.True(_state.IsHalted);
+        Assert.Equal(1, report.Closed);
+        Assert.Empty(await _db.PaperPositions.ToListAsync());
+        Assert.Empty(_broker.Positions);
+        Assert.Contains(await _db.AuditEntries.ToListAsync(), a => a.Action == "emergencia.zerar-tudo");
+    }
+
+    [Fact]
+    public async Task Decisao_guarda_parametros_contexto_e_versao_do_codigo()
+    {
+        await AssignAsync("WIN", StrategyKeys.BuyAndHold);
+        _feed.Price = 130_000m;
+
+        await Service().RunCycleAsync(CancellationToken.None);
+
+        var decision = await _db.TradingDecisions.SingleAsync();
+        Assert.Equal(Domain.Learning.FeatureVector.Count, decision.Features.Count);
+        Assert.False(string.IsNullOrWhiteSpace(decision.CodeVersion));
+        Assert.NotNull(decision.Parameters);
+    }
+
+    [Fact]
+    public async Task Excursoes_maxima_e_minima_vao_para_o_diario()
+    {
+        await AssignAsync("WIN", StrategyKeys.BuyAndHold);
+        await Service().RunCycleAsync(CancellationToken.None);
+        _feed.Price = 130_200m;
+        await Service().RunCycleAsync(CancellationToken.None);
+        _feed.Price = 129_900m;
+        await Service().RunCycleAsync(CancellationToken.None);
+
+        await Service().ClosePositionAsync((await _db.PaperPositions.SingleAsync()).Id, "caio", CancellationToken.None);
+
+        var entry = await _db.TradeJournal.SingleAsync();
+        Assert.Equal(Math.Round(195m / 130_005m * 100m, 3), entry.MfePercent);
+        // A saída manual é no bid (129.895): 110 pontos abaixo da entrada.
+        Assert.Equal(Math.Round(110m / 130_005m * 100m, 3), entry.MaePercent);
     }
 }

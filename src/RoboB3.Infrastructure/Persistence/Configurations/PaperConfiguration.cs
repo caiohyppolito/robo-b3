@@ -83,6 +83,7 @@ internal sealed class PaperPositionConfiguration : IEntityTypeConfiguration<Pape
         {
             nameof(PaperPosition.EntryPrice), nameof(PaperPosition.Stop), nameof(PaperPosition.Multiplier),
             nameof(PaperPosition.EntryCost), nameof(PaperPosition.MarkPrice),
+            nameof(PaperPosition.MaxFavorable), nameof(PaperPosition.MaxAdverse),
         })
         {
             builder.Property(name).HasPrecision(18, 6);
@@ -140,6 +141,36 @@ internal sealed class TradingDecisionConfiguration : IEntityTypeConfiguration<Tr
         builder.Property(d => d.Sizing).HasMaxLength(500);
         builder.Property(d => d.Price).HasPrecision(18, 6);
         builder.Property(d => d.Stop).HasPrecision(18, 6);
+        builder.Property(d => d.Parameters).AsJson();
+        builder.Property(d => d.Features).AsJson();
+        builder.Property(d => d.CodeVersion).HasMaxLength(100);
+        builder.Property(d => d.ClientOrderId).HasMaxLength(64);
         builder.HasIndex(d => new { d.Mode, d.Time });
+    }
+}
+
+internal sealed class OrderIntentConfiguration : IEntityTypeConfiguration<Domain.Execution.OrderIntent>
+{
+    public void Configure(EntityTypeBuilder<Domain.Execution.OrderIntent> builder)
+    {
+        builder.ToTable("OrderIntents");
+        builder.HasKey(i => i.Id);
+        builder.Property(i => i.Id).ValueGeneratedNever();
+        builder.Property(i => i.ClientOrderId).HasMaxLength(64);
+        builder.HasIndex(i => i.ClientOrderId).IsUnique();
+        builder.Property(i => i.Mode).HasConversion<string>().HasMaxLength(10);
+        builder.Property(i => i.Purpose).HasConversion<string>().HasMaxLength(10);
+        builder.Property(i => i.Side).HasConversion<string>().HasMaxLength(10);
+        builder.Property(i => i.Status).HasConversion<string>().HasMaxLength(15);
+        builder.Property(i => i.Symbol).HasMaxLength(30);
+        builder.Property(i => i.StrategyKey).HasMaxLength(50);
+        builder.Property(i => i.Reason).HasMaxLength(100);
+        builder.Property(i => i.Message).HasMaxLength(500);
+        builder.Property(i => i.ReferencePrice).HasPrecision(18, 6);
+        builder.Property(i => i.StopLoss).HasPrecision(18, 6);
+        builder.Property(i => i.FillPrice).HasPrecision(18, 6);
+        builder.Ignore(i => i.Slippage);
+        builder.Ignore(i => i.IsOpen);
+        builder.HasIndex(i => new { i.Mode, i.Status });
     }
 }

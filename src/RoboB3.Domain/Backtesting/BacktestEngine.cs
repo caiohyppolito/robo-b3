@@ -138,6 +138,7 @@ public sealed class BacktestEngine
             if (_position is not null)
             {
                 _barsInPosition++;
+                _position.Track(bar);
             }
 
             var equity = MarkToMarket(bar.Close);
@@ -421,7 +422,9 @@ public sealed class BacktestEngine
             position.Features?.Values,
             position.Probability,
             position.EntryTime,
-            bar.Time));
+            bar.Time,
+            Math.Round(position.MaxAdverse / position.EntryPrice * 100m, 3),
+            Math.Round(position.MaxFavorable / position.EntryPrice * 100m, 3)));
 
         var saleAmount = (position.Direction == PositionDirection.Long ? price : position.EntryPrice) * position.Quantity * _instrument.Multiplier;
         _monthTrades.Add(new RealizedTrade(date, Categorize(position.EntryDate, date), net, saleAmount));
@@ -489,6 +492,19 @@ public sealed class BacktestEngine
         public int BarsHeld { get; set; }
 
         public DateTimeOffset? EntryTime { get; init; }
+
+        public decimal MaxFavorable { get; private set; }
+
+        public decimal MaxAdverse { get; private set; }
+
+        /// <summary>Excursões pela máxima e mínima da barra (MFE/MAE), no sentido da posição.</summary>
+        public void Track(Bar bar)
+        {
+            var favorable = Direction == PositionDirection.Long ? bar.High - EntryPrice : EntryPrice - bar.Low;
+            var adverse = Direction == PositionDirection.Long ? EntryPrice - bar.Low : bar.High - EntryPrice;
+            MaxFavorable = Math.Max(MaxFavorable, favorable);
+            MaxAdverse = Math.Max(MaxAdverse, adverse);
+        }
 
         public FeatureVector? Features { get; init; }
 

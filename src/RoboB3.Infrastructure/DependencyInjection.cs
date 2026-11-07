@@ -59,6 +59,8 @@ public static class DependencyInjection
         services.AddScoped<IStrategyAssignmentRepository, StrategyAssignmentRepository>();
         services.AddScoped<IExecutionSettingsRepository, ExecutionSettingsRepository>();
         services.AddScoped<IOrderExecutorFactory, OrderExecutorFactory>();
+        services.AddScoped<IOrderIntentRepository, OrderIntentRepository>();
+        services.AddScoped<ITradingLock, SqlServerTradingLock>();
         services.AddOptions<ExecutionOptions>().Bind(configuration.GetSection(ExecutionOptions.SectionName));
 
         // Cliente de ordens SEM novas tentativas automáticas: repetir uma ordem pode duplicá-la.

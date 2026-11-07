@@ -538,3 +538,30 @@ export interface PaperSettings {
 export const settingsApi = {
   paper: () => request<PaperSettings>("/api/paper/settings"),
 };
+
+// ---------- Robustez: ordens e emergência ----------
+
+export interface OrderIntent {
+  clientOrderId: string;
+  createdAt: string;
+  purpose: "Entry" | "Exit";
+  symbol: string;
+  side: "Buy" | "Sell";
+  quantity: number;
+  referencePrice: number;
+  stopLoss: number | null;
+  status: "Pending" | "Filled" | "Rejected" | "Unconfirmed" | "Recovered";
+  fillPrice: number | null;
+  fillQuantity: number | null;
+  slippage: number | null;
+  latencyMs: number | null;
+  brokerTicket: number | null;
+  reason: string;
+  message: string | null;
+}
+
+export const ordersApi = {
+  list: () => request<OrderIntent[]>("/api/orders?count=50"),
+  flattenAll: (confirmation: string) =>
+    request<CycleReport>("/api/emergency/flatten", { method: "POST", body: JSON.stringify({ confirmation }) }),
+};

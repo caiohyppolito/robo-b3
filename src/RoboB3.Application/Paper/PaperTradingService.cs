@@ -36,6 +36,8 @@ public sealed partial class PaperTradingService(
     ITradeJournalRepository journal,
     IExecutionSettingsRepository executionSettings,
     IOrderExecutorFactory executors,
+    IOrderIntentRepository intents,
+    ITradingLock tradingLock,
     LearningService learning,
     IAuditLog audit,
     IUnitOfWork unitOfWork,
@@ -48,6 +50,18 @@ public sealed partial class PaperTradingService(
     public const string Actor = "robo";
 
     public async Task<CycleReport> RunCycleAsync(CancellationToken cancellationToken)
+    {
+        // Um ciclo por vez (worker e botão "rodar agora"): dois ciclos simultâneos poderiam enviar a mesma ordem duas vezes.
+        await using var held = await tradingLock.TryAcquireAsync(TimeSpan.Zero, cancellationToken);
+        if (held is null)
+        {
+            return new CycleReport(true, 0, 0, ["Outro ciclo está em andamento; este foi ignorado."]);
+        }
+
+        return await RunCycleLockedAsync(cancellationToken);
+    }
+
+    private async Task<CycleReport> RunCycleLockedAsync(CancellationToken cancellationToken)
     {
         var status = await feed.GetStatusAsync(cancellationToken);
         var mode = (await executionSettings.GetAsync(cancellationToken)).Mode;
@@ -98,6 +112,7 @@ public sealed partial class PaperTradingService(
     /// <summary>Encerramento manual a mercado. Sempre permitido: reduzir risco nunca é bloqueado.</summary>
     public async Task ClosePositionAsync(Guid positionId, string actor, CancellationToken cancellationToken)
     {
+        await using var held = await AcquireForManualActionAsync(cancellationToken);
         var mode = (await executionSettings.GetAsync(cancellationToken)).Mode;
         var cycle = await StartCycleAsync(mode, cancellationToken);
         var position = cycle.Positions.FirstOrDefault(p => p.Id == positionId)
@@ -116,6 +131,7 @@ public sealed partial class PaperTradingService(
     /// <summary>Zera o livro do modo vigente. Exige o robô travado e nenhuma posição aberta.</summary>
     public async Task ResetAsync(string actor, CancellationToken cancellationToken)
     {
+        await using var held = await AcquireForManualActionAsync(cancellationToken);
         var mode = (await executionSettings.GetAsync(cancellationToken)).Mode;
         if (!(await tradingState.GetAsync(cancellationToken)).IsHalted)
         {
@@ -131,6 +147,39 @@ public sealed partial class PaperTradingService(
         audit.Record(new AuditEntry("operacao.conta-reiniciada", actor, mode.Describe(), clock.GetUtcNow()));
         await unitOfWork.SaveChangesAsync(cancellationToken);
     }
+
+    /// <summary>
+    /// Botão de emergência: trava o robô (nenhuma entrada nova) e encerra a mercado TODAS as posições do modo atual.
+    /// Posições que a corretora não encerrar continuam abertas e listadas no relatório; o robô segue travado.
+    /// </summary>
+    public async Task<CycleReport> FlattenAllAsync(string actor, CancellationToken cancellationToken)
+    {
+        await using var held = await AcquireForManualActionAsync(cancellationToken);
+        var mode = (await executionSettings.GetAsync(cancellationToken)).Mode;
+        var cycle = await StartCycleAsync(mode, cancellationToken);
+        Halt(cycle, $"Zerar tudo acionado por {actor}.");
+        foreach (var position in cycle.Positions.ToList())
+        {
+            try
+            {
+                var quote = await feed.GetQuoteAsync(position.ContractSymbol, cancellationToken);
+                await CloseAsync(cycle, position, quote, "zerar tudo", cancellationToken);
+            }
+            catch (HttpRequestException ex)
+            {
+                cycle.Messages.Add($"{position.ContractSymbol}: sem cotação para encerrar ({ex.Message}). Encerre manualmente no MT5.");
+            }
+        }
+
+        audit.Record(new AuditEntry("emergencia.zerar-tudo", actor,
+            $"{mode.Describe()}: {cycle.Closed} encerradas, {cycle.Positions.Count} ainda abertas", cycle.Now));
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return new CycleReport(true, 0, cycle.Closed, cycle.Messages);
+    }
+
+    private async Task<IAsyncDisposable> AcquireForManualActionAsync(CancellationToken cancellationToken) =>
+        await tradingLock.TryAcquireAsync(TimeSpan.FromSeconds(20), cancellationToken)
+        ?? throw new DomainException("Um ciclo de operação está demorando; tente de novo em alguns segundos.");
 
     private async Task<Cycle> StartCycleAsync(ExecutionMode mode, CancellationToken cancellationToken)
     {
@@ -164,6 +213,7 @@ public sealed partial class PaperTradingService(
     private async Task ReconcileAsync(Cycle cycle, CancellationToken cancellationToken)
     {
         var broker = await cycle.Executor.GetPositionsAsync(cancellationToken);
+        await RecoverPendingOrdersAsync(cycle, broker, cancellationToken);
         if (broker is null)
         {
             return;
@@ -195,6 +245,56 @@ public sealed partial class PaperTradingService(
         foreach (var unknown in broker.Where(b => b.IsRobot && !known.Contains(b.Ticket)))
         {
             Halt(cycle, $"Posição do robô na corretora sem registro interno: {unknown.Symbol} {unknown.Volume} (ticket {unknown.Ticket}).");
+        }
+    }
+
+    /// <summary>
+    /// Ordens que ficaram sem resposta (o processo caiu entre o envio e o registro). Com a trava de ciclo,
+    /// toda intenção pendente no início de um ciclo é de uma execução interrompida. Nada é reenviado:
+    /// uma entrada encontrada na corretora é adotada pelo livro; o resto é marcado como não confirmado.
+    /// </summary>
+    private async Task RecoverPendingOrdersAsync(Cycle cycle, IReadOnlyList<BrokerPosition>? broker, CancellationToken cancellationToken)
+    {
+        var pending = await intents.ListOpenAsync(cycle.Mode, cancellationToken);
+        if (pending.Count == 0)
+        {
+            return;
+        }
+
+        var known = cycle.Positions.Select(p => p.BrokerTicket).OfType<long>().ToHashSet();
+        foreach (var intent in pending)
+        {
+            if (broker is null)
+            {
+                intent.MarkUnconfirmed("Simulação interrompida antes de registrar a ordem; nada foi executado.", cycle.Now);
+                continue;
+            }
+
+            var match = intent.Purpose == OrderPurpose.Entry
+                ? broker.FirstOrDefault(b => b.IsRobot && !known.Contains(b.Ticket) && b.Symbol == intent.Symbol && b.Side == intent.Side && b.Volume == intent.Quantity)
+                : null;
+            var assignment = cycle.Assignments.FirstOrDefault(a => a.Id == intent.AssignmentId);
+            if (match is not null && assignment is not null && cycle.Assets.TryGetValue(assignment.Symbol, out var asset))
+            {
+                var direction = intent.Side == OrderSide.Buy ? PositionDirection.Long : PositionDirection.Short;
+                var (position, fill) = cycle.Account.OpenPosition(assignment.Id, InstrumentSpec.For(asset), match.Symbol, intent.StrategyKey ?? assignment.StrategyKey,
+                    direction, match.Volume, match.Price, match.StopLoss ?? intent.StopLoss, backtestOptions.Value.Costs(), null, null, cycle.Now, match.Ticket);
+                paper.AddPosition(position);
+                paper.AddFill(fill);
+                cycle.Positions.Add(position);
+                known.Add(match.Ticket);
+                intent.Recover(match.Price, match.Volume, match.Ticket, cycle.Now);
+                intent.LinkPosition(position.Id);
+                audit.Record(new AuditEntry("ordem.recuperada", Actor, $"{match.Symbol} {match.Volume} ticket {match.Ticket} (id {intent.ClientOrderId})", cycle.Now));
+                cycle.Messages.Add($"{match.Symbol}: posição encontrada na corretora após reinício e adotada pelo livro (ticket {match.Ticket}).");
+                continue;
+            }
+
+            var outcome = intent.Purpose == OrderPurpose.Entry
+                ? "Sem posição correspondente na corretora: considerada não executada."
+                : "Encerramento sem confirmação: a conciliação deste ciclo decide pela posição na corretora.";
+            intent.MarkUnconfirmed(outcome, cycle.Now);
+            audit.Record(new AuditEntry("ordem.nao-confirmada", Actor, $"{intent.Symbol} {intent.Side} {intent.Quantity} (id {intent.ClientOrderId}): {outcome}", cycle.Now));
         }
     }
 
@@ -277,6 +377,7 @@ public sealed partial class PaperTradingService(
         var target = signal.Target == PositionDirection.Short && !instrument.AllowShort ? PositionDirection.Flat : signal.Target;
         cycle.Messages.Add($"{assignment.Symbol} → {contract}: barra {DescribeBar(closed[^1], assignment.Timeframe)} avaliada, sinal: {Describe(target)}.");
         var decision = new TradingDecision(cycle.Now, cycle.Mode, assignment.Id, assignment.Symbol, contract, assignment.StrategyKey, closed[^1].OpenTime, target);
+        decision.SetContext(assignment.Parameters, FeatureExtractor.TryExtract(history, target)?.Values, CodeVersion.Current);
         cycle.Decisions.Add(decision);
 
         if (position is not null)
@@ -368,6 +469,7 @@ public sealed partial class PaperTradingService(
             var assessment = active.Filter.Assess(features);
             probability = assessment.Probability;
             decision.SetProbability(assessment.Probability);
+            decision.SetModel(active.Model.Id);
             if (!assessment.Allowed)
             {
                 cycle.Messages.Add($"{contract}: a IA vetou a entrada (chance estimada {assessment.Probability:P0}).");
@@ -403,8 +505,8 @@ public sealed partial class PaperTradingService(
 
         decimal? stop = stopDistance is > 0 ? instrument.RoundToTick(price - ((int)target * stopDistance.Value)) : null;
         var instruction = new OrderInstruction(contract, side, quantity, price, stop, null, NewClientId("e"), $"entrada {assignment.StrategyKey}");
-        var result = await cycle.Executor.SendAsync(instruction, cancellationToken);
-        AuditOrder(cycle, instruction, result);
+        decision.SetOrder(instruction.ClientOrderId);
+        var (result, intent) = await SendWithIntentAsync(cycle, instruction, OrderPurpose.Entry, assignment.Id, null, assignment.StrategyKey, cancellationToken);
         if (!result.Filled || result.Quantity <= 0)
         {
             cycle.Messages.Add($"{contract}: ordem de entrada não executada: {result.Message}");
@@ -416,6 +518,7 @@ public sealed partial class PaperTradingService(
             result.Price, stop, backtestOptions.Value.Costs(), features, probability, cycle.Now, result.BrokerTicket);
         paper.AddPosition(position);
         paper.AddFill(fill);
+        intent.LinkPosition(position.Id);
         cycle.Positions.Add(position);
         cycle.Opened++;
         cycle.Messages.Add($"{contract}: {(isBuy ? "compra" : "venda")} de {result.Quantity} a {fill.Price}.");
@@ -429,8 +532,7 @@ public sealed partial class PaperTradingService(
         var side = position.Direction == PositionDirection.Long ? OrderSide.Sell : OrderSide.Buy;
         var instruction = new OrderInstruction(position.ContractSymbol, side, position.Quantity, quote.PriceFor(side == OrderSide.Buy),
             null, position.BrokerTicket, NewClientId("s"), reason);
-        var result = await cycle.Executor.SendAsync(instruction, cancellationToken);
-        AuditOrder(cycle, instruction, result);
+        var (result, _) = await SendWithIntentAsync(cycle, instruction, OrderPurpose.Exit, position.AssignmentId, position.Id, position.StrategyKey, cancellationToken);
         if (!result.Filled)
         {
             Halt(cycle, $"Falha ao encerrar {position.ContractSymbol} ({reason}): {result.Message} A posição continua aberta.");
@@ -474,6 +576,27 @@ public sealed partial class PaperTradingService(
             $"[{cycle.Mode.Describe()}] {instruction.Side} {instruction.Quantity} {instruction.Symbol} ({instruction.Reason}) " +
             $"stop={instruction.StopLoss} id={instruction.ClientOrderId}: {result.Message} preço={result.Price} ticket={result.BrokerTicket}",
             cycle.Now));
+    }
+
+    /// <summary>Grava a intenção ANTES de enviar (para sobreviver a uma queda no meio), envia e registra o resultado.</summary>
+    private async Task<(OrderResult Result, OrderIntent Intent)> SendWithIntentAsync(
+        Cycle cycle,
+        OrderInstruction instruction,
+        OrderPurpose purpose,
+        Guid? assignmentId,
+        Guid? positionId,
+        string strategyKey,
+        CancellationToken cancellationToken)
+    {
+        var intent = new OrderIntent(cycle.Mode, instruction.ClientOrderId, purpose, instruction.Symbol, instruction.Side, instruction.Quantity,
+            instruction.ReferencePrice, instruction.StopLoss, assignmentId, positionId, strategyKey, instruction.Reason, clock.GetUtcNow());
+        intents.Add(intent);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        var result = await cycle.Executor.SendAsync(instruction, cancellationToken);
+        intent.Complete(result.Filled, result.Price, result.Quantity, result.BrokerTicket, result.Message, clock.GetUtcNow());
+        AuditOrder(cycle, instruction, result);
+        return (result, intent);
     }
 
     private static string NewClientId(string kind) => $"{kind}-{Guid.NewGuid():N}";

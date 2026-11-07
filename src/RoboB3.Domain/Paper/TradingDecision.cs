@@ -95,6 +95,32 @@ public sealed class TradingDecision
     /// <summary>Conta do tamanho da posição (nas entradas).</summary>
     public string? Sizing { get; private set; }
 
+    /// <summary>Parâmetros da estratégia usados nesta decisão.</summary>
+    public IReadOnlyDictionary<string, decimal> Parameters { get; private set; } = new Dictionary<string, decimal>();
+
+    /// <summary>Contexto de mercado no instante da decisão (as variáveis da IA), quando havia histórico suficiente.</summary>
+    public IReadOnlyList<float> Features { get; private set; } = [];
+
+    /// <summary>Modelo de IA consultado, se houver.</summary>
+    public Guid? ModelId { get; private set; }
+
+    /// <summary>Versão do código do robô (inclui o commit).</summary>
+    public string CodeVersion { get; private set; } = string.Empty;
+
+    /// <summary>Ordem enviada a partir desta decisão (liga à execução, slippage e latência).</summary>
+    public string? ClientOrderId { get; private set; }
+
+    public void SetContext(IReadOnlyDictionary<string, decimal> parameters, IReadOnlyList<float>? features, string codeVersion)
+    {
+        Parameters = new Dictionary<string, decimal>(parameters ?? throw new ArgumentNullException(nameof(parameters)));
+        Features = features?.ToList() ?? [];
+        CodeVersion = codeVersion ?? string.Empty;
+    }
+
+    public void SetModel(Guid modelId) => ModelId = modelId;
+
+    public void SetOrder(string clientOrderId) => ClientOrderId = clientOrderId;
+
     public void Conclude(DecisionOutcome outcome, string detail)
     {
         Outcome = outcome;

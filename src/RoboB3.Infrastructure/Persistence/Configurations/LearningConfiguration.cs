@@ -60,6 +60,8 @@ internal sealed class TradeJournalConfiguration : IEntityTypeConfiguration<Trade
         builder.Property(e => e.Symbol).HasMaxLength(20);
         builder.Property(e => e.NetProfit).HasPrecision(18, 2);
         builder.Property(e => e.ReturnPercent).HasPrecision(10, 4);
+        builder.Property(e => e.MaePercent).HasPrecision(10, 4);
+        builder.Property(e => e.MfePercent).HasPrecision(10, 4);
         builder.Property(e => e.Features).HasConversion(
             new ValueConverter<IReadOnlyList<float>, string>(
                 v => JsonSerializer.Serialize(v, Json),

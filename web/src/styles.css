@@ -331,3 +331,10 @@ button.danger:disabled { opacity: 0.5; cursor: not-allowed; }
   .watch-row { grid-template-columns: minmax(0, 1fr) 90px auto 12px; }
   .spark { width: 90px; }
 }
+
+/* ---------- Emergência ---------- */
+.emergency { border: 1px solid var(--danger); display: flex; flex-direction: column; gap: 0.75rem; }
+.behaviour { display: grid; grid-template-columns: max-content 1fr; gap: 0.35rem 1rem; margin: 0; font-size: 0.9rem; }
+.behaviour dt { font-weight: 700; }
+.behaviour dd { margin: 0; color: var(--muted); }
+@media (max-width: 560px) { .behaviour { grid-template-columns: 1fr; } }

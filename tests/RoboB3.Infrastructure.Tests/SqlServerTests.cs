@@ -132,4 +132,22 @@ public class SqlServerTests(SqlServerDatabase database) : IClassFixture<SqlServe
 
         await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
     }
+
+    [SqlServerFact]
+    public async Task Trava_do_ciclo_vale_entre_conexoes_e_e_liberada()
+    {
+        await using var a = database.CreateContext();
+        await using var b = database.CreateContext();
+        var lockA = new Execution.SqlServerTradingLock(a);
+        var lockB = new Execution.SqlServerTradingLock(b);
+
+        await using (var held = await lockA.TryAcquireAsync(TimeSpan.Zero, CancellationToken.None))
+        {
+            Assert.NotNull(held);
+            Assert.Null(await lockB.TryAcquireAsync(TimeSpan.Zero, CancellationToken.None));
+        }
+
+        await using var again = await lockB.TryAcquireAsync(TimeSpan.Zero, CancellationToken.None);
+        Assert.NotNull(again);
+    }
 }

@@ -76,6 +76,30 @@ public sealed record PaperAccountDto(
 
 public sealed record ChangeModeDto(ExecutionMode Mode, string? Confirmation);
 
+public sealed record FlattenDto(string? Confirmation);
+
+public sealed record OrderIntentDto(
+    string ClientOrderId,
+    DateTimeOffset CreatedAt,
+    OrderPurpose Purpose,
+    string Symbol,
+    string Side,
+    int Quantity,
+    decimal ReferencePrice,
+    decimal? StopLoss,
+    OrderIntentStatus Status,
+    decimal? FillPrice,
+    int? FillQuantity,
+    decimal? Slippage,
+    int? LatencyMs,
+    long? BrokerTicket,
+    string Reason,
+    string? Message)
+{
+    public static OrderIntentDto From(OrderIntent i) => new(i.ClientOrderId, i.CreatedAt, i.Purpose, i.Symbol, i.Side.ToString(), i.Quantity,
+        i.ReferencePrice, i.StopLoss, i.Status, i.FillPrice, i.FillQuantity, i.Slippage, i.LatencyMs, i.BrokerTicket, i.Reason, i.Message);
+}
+
 public sealed record DecisionDto(
     long Id,
     DateTimeOffset Time,
@@ -153,6 +177,18 @@ internal static class PaperEndpoints
             var mode = (await execution.GetAsync(ct)).Mode;
             return (await paper.ListRecentDecisionsAsync(mode, count, ct)).Select(DecisionDto.From);
         }).WithTags("Operação");
+
+        app.MapGet("/api/orders", async (IOrderIntentRepository intents, IExecutionSettingsRepository execution, CancellationToken ct, int count = 50) =>
+        {
+            var mode = (await execution.GetAsync(ct)).Mode;
+            return (await intents.ListRecentAsync(mode, count, ct)).Select(OrderIntentDto.From);
+        }).WithTags("Operação");
+
+        // Emergência: trava o robô e encerra a mercado todas as posições do modo atual. Exige a frase digitada.
+        app.MapPost("/api/emergency/flatten", async (FlattenDto dto, HttpContext http, PaperTradingService service, CancellationToken ct) =>
+            string.Equals(dto.Confirmation?.Trim(), "ZERAR TUDO", StringComparison.Ordinal)
+                ? Results.Ok(await service.FlattenAllAsync(http.Actor(), ct))
+                : Results.Problem(statusCode: 400, title: "Confirmação necessária", detail: "Digite exatamente: ZERAR TUDO")).WithTags("Operação");
 
         app.MapGet("/api/execution", (ExecutionService service, CancellationToken ct) => service.GetAsync(ct)).WithTags("Operação");
 
