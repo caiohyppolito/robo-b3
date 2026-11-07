@@ -23,6 +23,7 @@ public static class DependencyInjection
         services.AddScoped<IntradayIngestionService>();
         services.AddScoped<StrategyAssignmentService>();
         services.AddScoped<ExecutionService>();
+        services.AddScoped<MarketWatchService>();
         services.AddSingleton<SimulatedOrderExecutor>();
         services.AddScoped<StrategyComparisonService>();
         return services;

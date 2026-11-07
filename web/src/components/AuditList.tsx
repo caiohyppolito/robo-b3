@@ -2,12 +2,12 @@ import { useEffect, useState } from "react";
 import { api, type AuditEntry } from "../api";
 import { formatDateTime } from "../format";
 
-export function AuditList({ refreshKey }: { refreshKey: number }) {
+export function AuditList({ refreshKey, count = 15 }: { refreshKey: number; count?: number }) {
   const [entries, setEntries] = useState<AuditEntry[]>([]);
 
   useEffect(() => {
-    api.audit(15).then(setEntries).catch(() => setEntries([]));
-  }, [refreshKey]);
+    api.audit(count).then(setEntries).catch(() => setEntries([]));
+  }, [refreshKey, count]);
 
   return (
     <section className="card">

@@ -76,10 +76,32 @@ public sealed record PaperAccountDto(
 
 public sealed record ChangeModeDto(ExecutionMode Mode, string? Confirmation);
 
+public sealed record DecisionDto(
+    long Id,
+    DateTimeOffset Time,
+    string Symbol,
+    string Contract,
+    string Strategy,
+    DateTimeOffset BarTime,
+    string Signal,
+    DecisionOutcome Outcome,
+    string Detail,
+    double? Probability,
+    int? Quantity,
+    decimal? Price,
+    decimal? Stop,
+    string? Sizing)
+{
+    public static DecisionDto From(TradingDecision d) => new(d.Id, d.Time, d.Symbol, d.Contract, d.StrategyKey, d.BarTime,
+        d.Signal.ToString(), d.Outcome, d.Detail, d.Probability, d.Quantity, d.Price, d.Stop, d.Sizing);
+}
+
 internal static class PaperEndpoints
 {
     public static IEndpointRouteBuilder MapPaperEndpoints(this IEndpointRouteBuilder app)
     {
+        app.MapGet("/api/market/watch", (MarketWatchService service, CancellationToken ct) => service.GetAsync(ct)).WithTags("Operação");
+
         app.MapGet("/api/feed/status", (IMarketDataFeed feed, CancellationToken ct) => feed.GetStatusAsync(ct)).WithTags("Operação");
 
         var group = app.MapGroup("/api/paper").WithTags("Operação");
@@ -110,6 +132,8 @@ internal static class PaperEndpoints
                 fills.Select(PaperFillDto.From).ToList());
         });
 
+        group.MapGet("/settings", (Microsoft.Extensions.Options.IOptions<PaperTradingOptions> options) => options.Value);
+
         group.MapPost("/cycle", (PaperTradingService service, CancellationToken ct) => service.RunCycleAsync(ct));
 
         group.MapPost("/positions/{id:guid}/close", async (Guid id, HttpContext http, PaperTradingService service, CancellationToken ct) =>
@@ -123,6 +147,12 @@ internal static class PaperEndpoints
             await service.ResetAsync(http.Actor(), ct);
             return Results.NoContent();
         });
+
+        app.MapGet("/api/decisions", async (IPaperRepository paper, IExecutionSettingsRepository execution, CancellationToken ct, int count = 50) =>
+        {
+            var mode = (await execution.GetAsync(ct)).Mode;
+            return (await paper.ListRecentDecisionsAsync(mode, count, ct)).Select(DecisionDto.From);
+        }).WithTags("Operação");
 
         app.MapGet("/api/execution", (ExecutionService service, CancellationToken ct) => service.GetAsync(ct)).WithTags("Operação");
 

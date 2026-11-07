@@ -48,7 +48,11 @@ public interface IPaperRepository
 
     Task<IReadOnlyList<PaperFill>> ListRecentFillsAsync(ExecutionMode mode, int count, CancellationToken cancellationToken);
 
-    /// <summary>Apaga conta, posições e execuções do modo (o diário da IA é mantido).</summary>
+    void AddDecision(TradingDecision decision);
+
+    Task<IReadOnlyList<TradingDecision>> ListRecentDecisionsAsync(ExecutionMode mode, int count, CancellationToken cancellationToken);
+
+    /// <summary>Apaga conta, posições e execuções do modo (o diário da IA e o registro de decisões são mantidos).</summary>
     Task ResetAsync(ExecutionMode mode, CancellationToken cancellationToken);
 }
 

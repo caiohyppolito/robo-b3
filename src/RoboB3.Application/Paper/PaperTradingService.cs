@@ -81,6 +81,11 @@ public sealed partial class PaperTradingService(
             }
         }
 
+        foreach (var decision in cycle.Decisions)
+        {
+            paper.AddDecision(decision);
+        }
+
         await unitOfWork.SaveChangesAsync(cancellationToken);
         foreach (var message in cycle.Messages)
         {
@@ -271,6 +276,8 @@ public sealed partial class PaperTradingService(
         var signal = strategy.Evaluate(history, context);
         var target = signal.Target == PositionDirection.Short && !instrument.AllowShort ? PositionDirection.Flat : signal.Target;
         cycle.Messages.Add($"{assignment.Symbol} → {contract}: barra {DescribeBar(closed[^1], assignment.Timeframe)} avaliada, sinal: {Describe(target)}.");
+        var decision = new TradingDecision(cycle.Now, cycle.Mode, assignment.Id, assignment.Symbol, contract, assignment.StrategyKey, closed[^1].OpenTime, target);
+        cycle.Decisions.Add(decision);
 
         if (position is not null)
         {
@@ -290,6 +297,7 @@ public sealed partial class PaperTradingService(
                     }
                 }
 
+                decision.Conclude(DecisionOutcome.Held, $"Mantém a posição {Describe(position.Direction)} de {position.Quantity}; stop {position.Stop?.ToString("N2") ?? "—"}.");
                 return;
             }
         }
@@ -302,17 +310,24 @@ public sealed partial class PaperTradingService(
         if (quote is null)
         {
             cycle.Messages.Add($"{contract}: sem cotação recente (mercado fechado?).");
+            decision.Conclude(DecisionOutcome.Blocked, "Sem cotação recente (mercado fechado?).");
             return;
         }
 
-        if (position is not null && !await CloseAsync(cycle, position, quote, "sinal", cancellationToken))
+        if (position is not null)
         {
-            return;
+            if (!await CloseAsync(cycle, position, quote, "sinal", cancellationToken))
+            {
+                decision.Conclude(DecisionOutcome.Failed, $"A corretora não executou o encerramento da posição {Describe(position.Direction)}.");
+                return;
+            }
+
+            decision.Conclude(DecisionOutcome.Exited, $"Encerrou a posição {Describe(position.Direction)}: o sinal mudou para {Describe(target)}.");
         }
 
         if (target != PositionDirection.Flat)
         {
-            await TryOpenAsync(cycle, assignment, asset, instrument, contract, quote, history, signal, target, cancellationToken);
+            await TryOpenAsync(cycle, assignment, asset, instrument, contract, quote, history, signal, target, decision, cancellationToken);
         }
     }
 
@@ -326,6 +341,7 @@ public sealed partial class PaperTradingService(
         History history,
         StrategySignal signal,
         PositionDirection target,
+        TradingDecision decision,
         CancellationToken cancellationToken)
     {
         var options = paperOptions.Value;
@@ -340,6 +356,7 @@ public sealed partial class PaperTradingService(
         if (blocked is not null)
         {
             cycle.Messages.Add($"{contract}: entrada bloqueada, {blocked}.");
+            decision.Conclude(DecisionOutcome.Blocked, $"Entrada bloqueada: {blocked}.");
             return;
         }
 
@@ -350,9 +367,11 @@ public sealed partial class PaperTradingService(
         {
             var assessment = active.Filter.Assess(features);
             probability = assessment.Probability;
+            decision.SetProbability(assessment.Probability);
             if (!assessment.Allowed)
             {
                 cycle.Messages.Add($"{contract}: a IA vetou a entrada (chance estimada {assessment.Probability:P0}).");
+                decision.Conclude(DecisionOutcome.Vetoed, $"A IA vetou: chance estimada de acerto {assessment.Probability:P0}, abaixo do limiar do modelo.");
                 return;
             }
         }
@@ -362,19 +381,23 @@ public sealed partial class PaperTradingService(
         decimal? stopDistance = signal.StopPrice is { } signalStop ? Math.Abs(history.Current.Close - signalStop) : null;
         var equity = cycle.Account.Equity(cycle.Positions);
         var otherContracts = cycle.Positions.Where(p => p.IsFuture).Sum(p => p.Quantity);
-        var quantity = PositionSizer.Size(price, stopDistance, equity, options.RiskPerTradePercent, instrument, cycle.Limits, otherContracts);
+        var sizing = PositionSizer.Explain(price, stopDistance, equity, options.RiskPerTradePercent, instrument, cycle.Limits, otherContracts);
+        var quantity = sizing.Quantity;
+        decision.SetSizing(sizing.Explanation);
         if (quantity <= 0)
         {
             cycle.Messages.Add($"{contract}: tamanho calculado menor que um lote.");
+            decision.Conclude(DecisionOutcome.Blocked, "Tamanho calculado menor que um lote.");
             return;
         }
 
         var side = isBuy ? OrderSide.Buy : OrderSide.Sell;
         var order = new OrderRequest(asset.Symbol, asset.AssetClass, side, quantity, price * instrument.Multiplier);
-        var decision = RiskManager.Evaluate(order, cycle.Account.Snapshot(cycle.Positions), cycle.Limits, cycle.State);
-        if (!decision.IsApproved)
+        var riskDecision = RiskManager.Evaluate(order, cycle.Account.Snapshot(cycle.Positions), cycle.Limits, cycle.State);
+        if (!riskDecision.IsApproved)
         {
-            cycle.Messages.Add($"{contract}: entrada rejeitada pelo risco: {string.Join(" ", decision.Violations)}");
+            cycle.Messages.Add($"{contract}: entrada rejeitada pelo risco: {string.Join(" ", riskDecision.Violations)}");
+            decision.Conclude(DecisionOutcome.Rejected, $"Recusada pelo gestor de risco: {string.Join(" ", riskDecision.Violations)}");
             return;
         }
 
@@ -385,6 +408,7 @@ public sealed partial class PaperTradingService(
         if (!result.Filled || result.Quantity <= 0)
         {
             cycle.Messages.Add($"{contract}: ordem de entrada não executada: {result.Message}");
+            decision.Conclude(DecisionOutcome.Failed, $"Ordem de entrada não executada: {result.Message}");
             return;
         }
 
@@ -395,6 +419,8 @@ public sealed partial class PaperTradingService(
         cycle.Positions.Add(position);
         cycle.Opened++;
         cycle.Messages.Add($"{contract}: {(isBuy ? "compra" : "venda")} de {result.Quantity} a {fill.Price}.");
+        decision.SetExecution(result.Quantity, fill.Price, stop);
+        decision.Conclude(DecisionOutcome.Entered, $"{(isBuy ? "Comprou" : "Vendeu")} {result.Quantity} a {fill.Price:N2}" + (stop is { } s ? $", stop {s:N2}." : ", sem stop."));
     }
 
     /// <returns>Falso se a corretora não executou: a posição continua aberta e o robô é travado.</returns>
@@ -518,6 +544,8 @@ public sealed partial class PaperTradingService(
         public Dictionary<string, Quote> Quotes { get; } = [];
 
         public List<string> Messages { get; } = [];
+
+        public List<TradingDecision> Decisions { get; } = [];
 
         public int Opened { get; set; }
 

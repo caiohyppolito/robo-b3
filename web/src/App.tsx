@@ -1,30 +1,45 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, executionApi, MODE_LABEL, session, setUnauthorizedHandler, type ExecutionMode, type Status } from "./api";
+import { api, executionApi, session, setUnauthorizedHandler, type ExecutionStatus, type Status } from "./api";
 import { AssetsTable } from "./components/AssetsTable";
 import { AuditList } from "./components/AuditList";
 import { BacktestPage } from "./components/backtest/BacktestPage";
 import { LearningPage } from "./components/learning/LearningPage";
-import { OperationPage } from "./components/operation/OperationPage";
 import { Login } from "./components/Login";
+import { OperationPage } from "./components/operation/OperationPage";
+import { DecisionsPage } from "./components/overview/DecisionsPage";
+import { OverviewPage } from "./components/overview/OverviewPage";
 import { RiskLimitsForm } from "./components/RiskLimitsForm";
 import { StatusPanel } from "./components/StatusPanel";
+import { pageFromHash, PAGE_TITLE, type PageId } from "./components/shell/navigation";
+import { Sidebar } from "./components/shell/Sidebar";
+import { applyTheme, loadTheme, type ThemeChoice } from "./components/shell/theme";
+import { TopBar } from "./components/shell/TopBar";
 
 const REFRESH_MS = 10_000;
 
 export function App() {
   const [loggedIn, setLoggedIn] = useState(() => session.token !== null);
   const [status, setStatus] = useState<Status | null>(null);
+  const [execution, setExecution] = useState<ExecutionStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [mode, setMode] = useState<ExecutionMode | null>(null);
-  const [page, setPage] = useState<"painel" | "operacao" | "backtest" | "ia">("painel");
+  const [page, setPage] = useState<PageId>(pageFromHash);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [theme, setTheme] = useState<ThemeChoice>(loadTheme);
 
   useEffect(() => setUnauthorizedHandler(() => setLoggedIn(false)), []);
+  useEffect(() => applyTheme(theme), [theme]);
+  useEffect(() => {
+    const onHash = () => setPage(pageFromHash());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
-      setStatus(await api.status());
-      setMode((await executionApi.get()).mode);
+      const [s, e] = await Promise.all([api.status(), executionApi.get()]);
+      setStatus(s);
+      setExecution(e);
       setError(null);
       setRefreshKey((k) => k + 1);
     } catch (e) {
@@ -39,62 +54,67 @@ export function App() {
     return () => window.clearInterval(timer);
   }, [loggedIn, refresh]);
 
+  const navigate = (next: PageId) => {
+    window.location.hash = `/${next}`;
+    setPage(next);
+    setMenuOpen(false);
+  };
+
+  const logout = () => {
+    session.token = null;
+    setLoggedIn(false);
+  };
+
   if (!loggedIn) return <Login onLoggedIn={() => setLoggedIn(true)} />;
 
   return (
-    <div className="app">
-      <header>
-        <h1>Robô B3</h1>
-        <nav className="tabs" aria-label="Seções">
-          <button className={page === "painel" ? "active" : ""} onClick={() => setPage("painel")}>
-            Painel
-          </button>
-          <button className={page === "operacao" ? "active" : ""} onClick={() => setPage("operacao")}>
-            Operação
-          </button>
-          <button className={page === "backtest" ? "active" : ""} onClick={() => setPage("backtest")}>
-            Backtest
-          </button>
-          <button className={page === "ia" ? "active" : ""} onClick={() => setPage("ia")}>
-            IA
-          </button>
-        </nav>
-        {mode && <span className={`badge ${mode === "Mt5Real" ? "badge-danger" : ""}`}>{MODE_LABEL[mode]}</span>}
-        <button
-          className="link"
-          onClick={() => {
-            session.token = null;
-            setLoggedIn(false);
-          }}
-        >
-          Sair
-        </button>
-      </header>
-      {error && <p className="error banner">{error}</p>}
-      {page === "backtest" ? (
+    <div className="shell">
+      <Sidebar page={page} open={menuOpen} onNavigate={navigate} onLogout={logout} />
+      {menuOpen && <div className="scrim" onClick={() => setMenuOpen(false)} aria-hidden="true" />}
+      <div className="content">
+        <TopBar
+          title={PAGE_TITLE[page]}
+          status={status}
+          execution={execution}
+          theme={theme}
+          onTheme={setTheme}
+          onMenu={() => setMenuOpen((open) => !open)}
+          onRisk={() => navigate("risco")}
+        />
         <main>
-          <BacktestPage />
+          {error && <p className="error banner">{error}</p>}
+          {page === "situacao" && <OverviewPage status={status} execution={execution} onNavigate={navigate} />}
+          {page === "operacao" && <OperationPage />}
+          {page === "decisoes" && <DecisionsPage />}
+          {page === "backtest" && <BacktestPage />}
+          {page === "ia" && <LearningPage />}
+          {page === "risco" &&
+            (status ? (
+              <>
+                <div className="page-head">
+                  <div>
+                              <p>Kill switch, perda do dia e drawdown do modo de execução atual, e os limites que o robô respeita em toda entrada.</p>
+                  </div>
+                </div>
+                <StatusPanel status={status} onChange={refresh} />
+                <RiskLimitsForm limits={status.limits} onSaved={refresh} />
+              </>
+            ) : (
+              <p className="muted">Carregando…</p>
+            ))}
+          {page === "auditoria" && (
+            <>
+              <div className="page-head">
+                <div>
+                          <p>Logins, kill switch, limites, modo de execução, ordens e decisões da IA.</p>
+                </div>
+              </div>
+              <AuditList refreshKey={refreshKey} count={100} />
+            </>
+          )}
+          {page === "ativos" && <AssetsTable />}
         </main>
-      ) : page === "operacao" ? (
-        <main>
-          <OperationPage />
-        </main>
-      ) : page === "ia" ? (
-        <main>
-          <LearningPage />
-        </main>
-      ) : status ? (
-        <main>
-          <StatusPanel status={status} onChange={refresh} />
-          <div className="columns">
-            <RiskLimitsForm limits={status.limits} onSaved={refresh} />
-            <AuditList refreshKey={refreshKey} />
-          </div>
-          <AssetsTable />
-        </main>
-      ) : (
-        !error && <p className="muted center">Carregando…</p>
-      )}
+      </div>
     </div>
   );
 }

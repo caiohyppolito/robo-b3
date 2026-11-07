@@ -21,6 +21,11 @@ internal sealed class PaperRepository(RoboB3DbContext db) : IPaperRepository
 
     public void AddFill(PaperFill fill) => db.PaperFills.Add(fill);
 
+    public void AddDecision(TradingDecision decision) => db.TradingDecisions.Add(decision);
+
+    public async Task<IReadOnlyList<TradingDecision>> ListRecentDecisionsAsync(ExecutionMode mode, int count, CancellationToken cancellationToken) =>
+        await db.TradingDecisions.AsNoTracking().Where(d => d.Mode == mode).OrderByDescending(d => d.Id).Take(Math.Clamp(count, 1, 500)).ToListAsync(cancellationToken);
+
     public async Task<IReadOnlyList<PaperFill>> ListRecentFillsAsync(ExecutionMode mode, int count, CancellationToken cancellationToken) =>
         await db.PaperFills.AsNoTracking().Where(f => f.Mode == mode).OrderByDescending(f => f.Time).Take(Math.Clamp(count, 1, 500)).ToListAsync(cancellationToken);
 

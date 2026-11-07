@@ -123,3 +123,23 @@ internal sealed class ExecutionSettingsConfiguration : IEntityTypeConfiguration<
         builder.Property(s => s.ChangedBy).HasMaxLength(100);
     }
 }
+
+internal sealed class TradingDecisionConfiguration : IEntityTypeConfiguration<TradingDecision>
+{
+    public void Configure(EntityTypeBuilder<TradingDecision> builder)
+    {
+        builder.ToTable("TradingDecisions");
+        builder.HasKey(d => d.Id);
+        builder.Property(d => d.Mode).HasConversion<string>().HasMaxLength(10);
+        builder.Property(d => d.Signal).HasConversion<string>().HasMaxLength(10);
+        builder.Property(d => d.Outcome).HasConversion<string>().HasMaxLength(10);
+        builder.Property(d => d.Symbol).HasMaxLength(20);
+        builder.Property(d => d.Contract).HasMaxLength(30);
+        builder.Property(d => d.StrategyKey).HasMaxLength(50);
+        builder.Property(d => d.Detail).HasMaxLength(1000);
+        builder.Property(d => d.Sizing).HasMaxLength(500);
+        builder.Property(d => d.Price).HasPrecision(18, 6);
+        builder.Property(d => d.Stop).HasPrecision(18, 6);
+        builder.HasIndex(d => new { d.Mode, d.Time });
+    }
+}

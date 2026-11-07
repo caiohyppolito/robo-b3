@@ -298,7 +298,8 @@ class FakeBackend:
         _validate(timeframe, count)
         minutes = TIMEFRAME_MINUTES[timeframe]
         now = self._clock()
-        epoch = datetime(2020, 1, 1, tzinfo=timezone.utc)
+        # Como no MT5 da B3, a barra diária começa à meia-noite de Brasília (03:00 UTC).
+        epoch = datetime(2020, 1, 1, 3 if timeframe == "D1" else 0, tzinfo=timezone.utc)
         current = int((now - epoch).total_seconds() // 60 // minutes)
         bars = []
         for index in range(current - count + 1, current + 1):

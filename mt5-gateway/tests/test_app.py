@@ -68,3 +68,9 @@ def test_parametros_invalidos_viram_erro_claro(client):
     response = client.get("/rates/PETR4", params={"timeframe": "M2", "count": 10})
     assert response.status_code == 400
     assert "Tempo gráfico inválido" in response.json()["detail"]
+
+
+def test_barra_diaria_comeca_a_meia_noite_de_brasilia(client):
+    bars = client.get("/rates/PETR4", params={"timeframe": "D1", "count": 2}).json()["bars"]
+    assert [datetime.fromisoformat(b["time"]).hour for b in bars] == [3, 3]
+    assert datetime.fromisoformat(bars[-1]["time"]).date() == NOW.date()

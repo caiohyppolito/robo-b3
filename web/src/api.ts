@@ -480,3 +480,61 @@ export const MODE_LABEL: Record<ExecutionMode, string> = {
   Mt5Demo: "MT5 conta demo",
   Mt5Real: "MT5 CONTA REAL",
 };
+
+// ---------- Painel (situação agora) ----------
+
+export interface WatchItem {
+  symbol: string;
+  name: string;
+  contract: string;
+  assetClass: AssetClass;
+  last: number | null;
+  changePercent: number | null;
+  quoteTime: string | null;
+  isFresh: boolean;
+  spark: number[];
+  error: string | null;
+}
+
+export interface MarketWatch {
+  connected: boolean;
+  message: string | null;
+  items: WatchItem[];
+}
+
+export type DecisionOutcome = "NoSignal" | "Held" | "Entered" | "Exited" | "Blocked" | "Vetoed" | "Rejected" | "Failed";
+
+export interface Decision {
+  id: number;
+  time: string;
+  symbol: string;
+  contract: string;
+  strategy: string;
+  barTime: string;
+  signal: "Long" | "Short" | "Flat";
+  outcome: DecisionOutcome;
+  detail: string;
+  probability: number | null;
+  quantity: number | null;
+  price: number | null;
+  stop: number | null;
+  sizing: string | null;
+}
+
+export const overviewApi = {
+  watch: () => request<MarketWatch>("/api/market/watch"),
+  decisions: (count = 50) => request<Decision[]>(`/api/decisions?count=${count}`),
+};
+
+export interface PaperSettings {
+  riskPerTradePercent: number;
+  maxQuoteAgeSeconds: number;
+  noEntriesBefore: string;
+  noEntriesAfter: string;
+  dayTradeFlattenAt: string;
+  barsToLoad: number;
+}
+
+export const settingsApi = {
+  paper: () => request<PaperSettings>("/api/paper/settings"),
+};

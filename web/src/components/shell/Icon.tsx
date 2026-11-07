@@ -1,0 +1,25 @@
+// Ícones de traço simples (24×24), desenhados aqui para não depender de biblioteca externa.
+const PATHS = {
+  overview: "M4 4h7v7H4zM13 4h7v4h-7zM13 10h7v10h-7zM4 13h7v7H4z",
+  operation: "M4 19V5M4 19h16M8 15l3-4 3 2 5-6",
+  decisions: "M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01",
+  backtest: "M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3l-5-9V3",
+  ai: "M12 3v3M12 18v3M3 12h3M18 12h3M6.3 6.3l2.1 2.1M15.6 15.6l2.1 2.1M6.3 17.7l2.1-2.1M15.6 8.4l2.1-2.1M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z",
+  risk: "M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z",
+  audit: "M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6",
+  markets: "M5 20V10M10 20V4M15 20v-7M20 20V8",
+  sun: "M12 4V2M12 22v-2M4 12H2M22 12h-2M5.6 5.6 4.2 4.2M19.8 19.8l-1.4-1.4M5.6 18.4l-1.4 1.4M19.8 4.2l-1.4 1.4M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z",
+  moon: "M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z",
+  auto: "M12 3a9 9 0 1 0 0 18zM12 3a9 9 0 0 1 0 18",
+  menu: "M4 6h16M4 12h16M4 18h16",
+} as const;
+
+export type IconName = keyof typeof PATHS;
+
+export function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={PATHS[name]} />
+    </svg>
+  );
+}

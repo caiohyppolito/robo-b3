@@ -546,4 +546,62 @@ public class PaperTradingTests
         Assert.Single(_broker.Positions);
         Assert.Contains(report.Messages, m => m.Contains("já existe posição do robô neste contrato", StringComparison.Ordinal));
     }
+
+    // ---------- Registro de decisões ----------
+
+    [Fact]
+    public async Task Entrada_fica_registrada_com_a_conta_do_tamanho()
+    {
+        await AssignAsync("WIN", StrategyKeys.BuyAndHold);
+
+        await Service().RunCycleAsync(CancellationToken.None);
+
+        var decision = Assert.Single(await _db.TradingDecisions.ToListAsync());
+        Assert.Equal(DecisionOutcome.Entered, decision.Outcome);
+        Assert.Equal("WINZ26", decision.Contract);
+        Assert.Equal(PositionDirection.Long, decision.Signal);
+        Assert.Equal(2, decision.Quantity);
+        Assert.Contains("teto de 2 contratos", decision.Sizing, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Entrada_bloqueada_e_posicao_mantida_ficam_registradas_com_o_motivo()
+    {
+        await AssignAsync("WIN", StrategyKeys.BuyAndHold);
+        _state.Halt("teste", "caio", _clock.GetUtcNow());
+        await Service().RunCycleAsync(CancellationToken.None);
+
+        _state.Resume("caio", _clock.GetUtcNow());
+        _clock.Advance(TimeSpan.FromMinutes(5));
+        await Service().RunCycleAsync(CancellationToken.None);
+        _clock.Advance(TimeSpan.FromMinutes(5));
+        await Service().RunCycleAsync(CancellationToken.None);
+
+        var decisions = await _db.TradingDecisions.OrderBy(d => d.Id).ToListAsync();
+        Assert.Equal([DecisionOutcome.Blocked, DecisionOutcome.Entered, DecisionOutcome.Held], decisions.Select(d => d.Outcome));
+        Assert.Contains("robô travado", decisions[0].Detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Cotacoes_do_painel_trazem_contrato_variacao_e_serie_do_dia()
+    {
+        await AssignAsync("PETR4", StrategyKeys.BuyAndHold);
+        var service = new MarketWatchService(_feed, new AssetRepository(_db), new StrategyAssignmentRepository(_db),
+            Options.Create(new PaperTradingOptions()), _clock);
+
+        var watch = await service.GetAsync(CancellationToken.None);
+
+        Assert.True(watch.Connected);
+        Assert.Equal(["WIN", "WDO", "IBOV", "PETR4"], watch.Items.Select(i => i.Symbol));
+        var win = watch.Items[0];
+        Assert.Equal("WINZ26", win.Contract);
+        Assert.True(win.IsFresh);
+        Assert.NotEmpty(win.Spark);
+        Assert.Equal(130_000m, win.Last);
+
+        _feed.Connected = false;
+        var offline = await service.GetAsync(CancellationToken.None);
+        Assert.False(offline.Connected);
+        Assert.Empty(offline.Items);
+    }
 }

@@ -124,4 +124,20 @@ public class IntradayBacktestTests
         Assert.Equal(1, PositionSizer.Size(130_000m, 100m, 100_000m, 1m, BacktestEngineTests.MiniIndex, limits, contractsInOtherPositions: 2));
         Assert.Equal(0, PositionSizer.Size(130_000m, 100m, 100_000m, 1m, BacktestEngineTests.MiniIndex, limits, contractsInOtherPositions: 5));
     }
+
+    [Fact]
+    public void Explicacao_do_tamanho_mostra_a_conta_e_o_limite_que_valeu()
+    {
+        var limits = new RiskLimits(2, 15, 20, 5, maxFuturesContracts: 2);
+
+        var future = PositionSizer.Explain(130_000m, 110m, 1_000_000m, 1m, BacktestEngineTests.MiniIndex, limits);
+        var stock = PositionSizer.Explain(36m, null, 100_000m, 1m, new InstrumentSpec("PETR4", AssetClass.Stock, 100, 1m, false), limits);
+
+        Assert.Equal(2, future.Quantity);
+        Assert.Contains("454 contratos pelo risco", future.Explanation, StringComparison.Ordinal);
+        Assert.Contains("teto de 2 contratos futuros", future.Explanation, StringComparison.Ordinal);
+        Assert.Equal(500, stock.Quantity);
+        Assert.Contains("exposição máxima de 20% por ativo", stock.Explanation, StringComparison.Ordinal);
+        Assert.Contains("lotes de 100", stock.Explanation, StringComparison.Ordinal);
+    }
 }
