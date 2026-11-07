@@ -2,7 +2,10 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {
   api,
   backtestApi,
+  executionApi,
+  MODE_LABEL,
   paperApi,
+  type ExecutionStatus,
   type Asset,
   type Assignment,
   type CycleReport,
@@ -12,6 +15,7 @@ import {
   type Timeframe,
 } from "../../api";
 import { formatBrl, formatDateTime, formatNumber, formatPercent } from "../../format";
+import { ExecutionModeCard } from "./ExecutionModeCard";
 
 const REFRESH_MS = 10_000;
 const TIMEFRAMES: { value: Timeframe; label: string }[] = [
@@ -27,6 +31,7 @@ const tone = (v: number) => (v > 0 ? "up" : v < 0 ? "down" : "");
 
 export function OperationPage() {
   const [feed, setFeed] = useState<FeedStatus | null>(null);
+  const [execution, setExecution] = useState<ExecutionStatus | null>(null);
   const [account, setAccount] = useState<PaperAccount | null>(null);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [strategies, setStrategies] = useState<StrategyDef[]>([]);
@@ -37,8 +42,9 @@ export function OperationPage() {
 
   const refresh = useCallback(async () => {
     try {
-      const [f, a, s] = await Promise.all([paperApi.feed(), paperApi.account(), paperApi.assignments()]);
+      const [f, a, s, e] = await Promise.all([paperApi.feed(), paperApi.account(), paperApi.assignments(), executionApi.get()]);
       setFeed(f);
+      setExecution(e);
       setAccount(a);
       setAssignments(s);
     } catch (e) {
@@ -76,10 +82,22 @@ export function OperationPage() {
 
   return (
     <div className="stack">
-      <p className="callout">
-        <strong>Operação simulada:</strong> as estratégias operam com preços reais do MetaTrader 5, mas as ordens são executadas só aqui
-        dentro. Nada é enviado à corretora. As operações encerradas alimentam o diário da IA.
-      </p>
+      {execution?.mode === "Mt5Real" ? (
+        <p className="banner danger-banner">
+          <strong>CONTA REAL:</strong> as ordens do robô são enviadas à sua conta na corretora, com dinheiro de verdade. O stop de cada
+          posição também fica registrado na corretora. Use o KILL SWITCH no Painel para travar novas entradas.
+        </p>
+      ) : execution?.mode === "Mt5Demo" ? (
+        <p className="callout">
+          <strong>MT5 conta demo:</strong> as ordens são enviadas de verdade ao MetaTrader 5, numa conta de demonstração (dinheiro
+          fictício). O robô confere a cada ciclo se as posições dele batem com as da corretora.
+        </p>
+      ) : (
+        <p className="callout">
+          <strong>Operação simulada:</strong> as estratégias operam com preços reais do MetaTrader 5, mas as ordens são executadas só
+          aqui dentro. Nada é enviado à corretora. As operações encerradas alimentam o diário da IA.
+        </p>
+      )}
       {error && <p className="error banner">{error}</p>}
 
       <section className="grid">
@@ -111,7 +129,7 @@ export function OperationPage() {
           )}
         </article>
         <article className="card">
-          <h2>Patrimônio simulado</h2>
+          <h2>Patrimônio ({execution ? MODE_LABEL[execution.mode] : "…"})</h2>
           <p className="big">{account ? formatBrl(account.equity) : "—"}</p>
           {account && (
             <p className={`small ${tone(account.totalProfit)}`}>
@@ -132,6 +150,8 @@ export function OperationPage() {
           </button>
         </article>
       </section>
+
+      {execution && <ExecutionModeCard status={execution} onChanged={() => void refresh()} />}
 
       {report && (
         <section className="card">
@@ -174,7 +194,10 @@ export function OperationPage() {
                   <tr key={p.id}>
                     <td>
                       <strong>{p.contract}</strong>
-                      <span className="muted small block">desde {formatDateTime(p.entryTime)}</span>
+                      <span className="muted small block">
+                        desde {formatDateTime(p.entryTime)}
+                        {p.brokerTicket !== null && ` · ticket ${p.brokerTicket}`}
+                      </span>
                     </td>
                     <td>{strategyName(p.strategy)}</td>
                     <td>{p.direction === "Long" ? "Compra" : "Venda"}</td>
@@ -270,7 +293,7 @@ export function OperationPage() {
       </section>
 
       <section className="card">
-        <h2>Execuções simuladas</h2>
+        <h2>Execuções</h2>
         {!account || account.fills.length === 0 ? (
           <p className="muted">Nenhuma execução ainda.</p>
         ) : (
@@ -308,13 +331,16 @@ export function OperationPage() {
       </section>
 
       <section className="card">
-        <h2>Reiniciar conta simulada</h2>
-        <p className="muted small">Apaga posições e execuções simuladas e volta ao capital inicial. Exige o robô travado e nenhuma posição aberta. O diário da IA é mantido.</p>
+        <h2>Reiniciar o livro do modo atual</h2>
+        <p className="muted small">
+          Apaga o registro interno de posições e execuções deste modo e recomeça do capital inicial (no MT5, do patrimônio da conta). Não
+          mexe na corretora. Exige o robô travado e nenhuma posição aberta. O diário da IA é mantido.
+        </p>
         <button
           type="button"
           disabled={busy !== null}
           onClick={() => {
-            if (window.confirm("Reiniciar a conta simulada?")) void act("reset", paperApi.reset);
+            if (window.confirm("Reiniciar o livro do modo atual?")) void act("reset", paperApi.reset);
           }}
         >
           Reiniciar conta

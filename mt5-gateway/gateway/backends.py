@@ -33,6 +33,16 @@ class Backend(Protocol):
 
     def tick(self, symbol: str) -> dict: ...
 
+    def account(self) -> dict: ...
+
+    def positions(self) -> list[dict]: ...
+
+    def send_order(self, order) -> dict: ...
+
+    def set_stop(self, symbol: str, ticket: int, stop_loss: float) -> dict: ...
+
+    def closing_price(self, ticket: int) -> float | None: ...
+
 
 def _validate(timeframe: str, count: int) -> None:
     if timeframe not in TIMEFRAME_MINUTES:
@@ -133,6 +143,105 @@ class Mt5Backend:
             raise GatewayError(f"Sem cotação de {symbol}.", 404)
         return {"symbol": symbol, "bid": tick.bid, "ask": tick.ask, "last": tick.last, "time": self._utc(tick.time)}
 
+    # ---------- Ordens (Fase 5) ----------
+
+    def account(self) -> dict:
+        self._ensure()
+        info = self._mt5.account_info()
+        if info is None:
+            raise GatewayError("Conta não identificada no MT5.", 503)
+        return {"login": info.login, "isDemo": info.trade_mode == self._mt5.ACCOUNT_TRADE_MODE_DEMO,
+                "balance": info.balance, "equity": info.equity, "currency": info.currency}
+
+    def positions(self) -> list[dict]:
+        self._ensure()
+        result = []
+        for p in self._mt5.positions_get() or []:
+            result.append({
+                "ticket": p.ticket, "symbol": p.symbol,
+                "side": "buy" if p.type == self._mt5.POSITION_TYPE_BUY else "sell",
+                "volume": int(p.volume), "price": p.price_open, "stopLoss": p.sl or None,
+                "profit": p.profit, "magic": p.magic,
+            })
+        return result
+
+    def _filling(self, symbol: str) -> int:
+        info = self._mt5.symbol_info(symbol)
+        mode = info.filling_mode if info else 0
+        if mode & 1:
+            return self._mt5.ORDER_FILLING_FOK
+        if mode & 2:
+            return self._mt5.ORDER_FILLING_IOC
+        return self._mt5.ORDER_FILLING_RETURN
+
+    def _deal_for_order(self, order_ticket: int, wait_seconds: float = 5.0):
+        """Na B3 a execução é na bolsa: a ordem pode voltar 'colocada' e o negócio sair logo depois."""
+        import time
+
+        deadline = time.monotonic() + wait_seconds
+        while time.monotonic() < deadline:
+            deals = self._mt5.history_deals_get(datetime.now(timezone.utc) - timedelta(days=1), datetime.now(timezone.utc) + timedelta(days=1)) or []
+            for deal in deals:
+                if deal.order == order_ticket:
+                    return deal
+            time.sleep(0.25)
+        return None
+
+    def send_order(self, order) -> dict:
+        from .orders import MAGIC
+
+        self._ensure()
+        self._select(order.symbol)
+        tick = self._mt5.symbol_info_tick(order.symbol)
+        if tick is None:
+            raise GatewayError(f"Sem cotação de {order.symbol}; ordem não enviada.", 409)
+        is_buy = order.side == "buy"
+        request = {
+            "action": self._mt5.TRADE_ACTION_DEAL,
+            "symbol": order.symbol,
+            "volume": float(order.volume),
+            "type": self._mt5.ORDER_TYPE_BUY if is_buy else self._mt5.ORDER_TYPE_SELL,
+            "price": tick.ask if is_buy else tick.bid,
+            "deviation": 20,
+            "magic": MAGIC,
+            "comment": order.comment,
+            "type_time": self._mt5.ORDER_TIME_DAY,
+            "type_filling": self._filling(order.symbol),
+        }
+        if order.stop_loss:
+            request["sl"] = float(order.stop_loss)
+        if order.position_ticket:
+            request["position"] = int(order.position_ticket)
+
+        result = self._mt5.order_send(request)
+        if result is None:
+            raise GatewayError(f"MT5 não aceitou a ordem: {self._mt5.last_error()}", 502)
+        done = result.retcode in (self._mt5.TRADE_RETCODE_DONE, self._mt5.TRADE_RETCODE_DONE_PARTIAL)
+        placed = result.retcode == self._mt5.TRADE_RETCODE_PLACED
+        if not (done or placed):
+            return {"filled": False, "retcode": result.retcode, "message": f"Ordem recusada ({result.retcode}): {result.comment}"}
+
+        deal = self._deal_for_order(result.order)
+        if deal is None:
+            return {"filled": False, "retcode": result.retcode, "order": result.order,
+                    "message": "Ordem enviada, mas o negócio não foi confirmado em 5 s. Confira no MT5."}
+        return {"filled": True, "retcode": result.retcode, "order": result.order, "deal": deal.ticket,
+                "ticket": deal.position_id, "price": deal.price, "volume": int(deal.volume), "message": "Executada."}
+
+    def set_stop(self, symbol: str, ticket: int, stop_loss: float) -> dict:
+        self._ensure()
+        result = self._mt5.order_send({
+            "action": self._mt5.TRADE_ACTION_SLTP, "symbol": symbol, "position": int(ticket), "sl": float(stop_loss), "tp": 0.0,
+        })
+        ok = result is not None and result.retcode == self._mt5.TRADE_RETCODE_DONE
+        return {"ok": ok, "message": "Stop atualizado." if ok else f"Stop não atualizado: {result.comment if result else self._mt5.last_error()}"}
+
+    def closing_price(self, ticket: int) -> float | None:
+        self._ensure()
+        deals = self._mt5.history_deals_get(position=int(ticket)) or []
+        exits = [d for d in deals if d.entry in (self._mt5.DEAL_ENTRY_OUT, self._mt5.DEAL_ENTRY_INOUT)]
+        return exits[-1].price if exits else None
+
 
 class FakeBackend:
     """
@@ -142,8 +251,13 @@ class FakeBackend:
 
     BASE_PRICES = {"WIN": 130_000.0, "WDO": 5_500.0, "IND": 130_000.0, "DOL": 5_500.0, "BOVA11": 120.0}
 
-    def __init__(self, clock=lambda: datetime.now(timezone.utc)) -> None:
+    def __init__(self, clock=lambda: datetime.now(timezone.utc), price_override=None) -> None:
         self._clock = clock
+        # Para testes: função (símbolo) -> preço, no lugar das ondas sintéticas.
+        self._price_override = price_override
+        self._positions: dict[str, dict] = {}
+        self._closed: dict[int, float] = {}
+        self._next_ticket = 1000
 
     @staticmethod
     def _root(symbol: str) -> str:
@@ -202,12 +316,86 @@ class FakeBackend:
         symbol = f"{root.upper()}$N" if root.upper() in FUTURE_ROOTS else root.upper()
         return symbol, self.rates(symbol, timeframe, count)
 
+    def _last(self, symbol: str) -> float:
+        if self._price_override is not None:
+            return float(self._price_override(symbol))
+        minute = (self._clock() - datetime(2020, 1, 1, tzinfo=timezone.utc)).total_seconds() / 60
+        return self._price(symbol, minute)
+
     def tick(self, symbol: str) -> dict:
         now = self._clock()
-        minute = (now - datetime(2020, 1, 1, tzinfo=timezone.utc)).total_seconds() / 60
-        last = self._price(symbol, minute)
+        self._check_stops()
+        last = self._last(symbol)
         spread = 5.0 if self._root(symbol) in ("WIN", "IND") else 0.5 if self._root(symbol) in ("WDO", "DOL") else 0.01
         return {"symbol": symbol, "bid": last - spread, "ask": last + spread, "last": last, "time": now.isoformat()}
+
+
+    # ---------- Ordens simuladas (conta demo fictícia, compensação por símbolo) ----------
+
+    def account(self) -> dict:
+        return {"login": 0, "isDemo": True, "balance": 100_000.0, "equity": 100_000.0, "currency": "BRL"}
+
+    def _spread(self, symbol: str) -> float:
+        root = self._root(symbol)
+        return 5.0 if root in ("WIN", "IND") else 0.5 if root in ("WDO", "DOL") else 0.01
+
+    def _check_stops(self) -> None:
+        """Simula o stop executado pela corretora."""
+        for symbol, position in list(self._positions.items()):
+            stop = position.get("stopLoss")
+            if not stop:
+                continue
+            last = self._last(symbol)
+            hit = last <= stop if position["side"] == "buy" else last >= stop
+            if hit:
+                self._closed[position["ticket"]] = stop
+                del self._positions[symbol]
+
+    def positions(self) -> list[dict]:
+        from .orders import MAGIC
+
+        self._check_stops()
+        return [{**p, "profit": 0.0, "magic": MAGIC} for p in self._positions.values()]
+
+    def send_order(self, order) -> dict:
+        self._check_stops()
+        last = self._last(order.symbol)
+        price = last + self._spread(order.symbol) if order.side == "buy" else last - self._spread(order.symbol)
+        current = self._positions.get(order.symbol)
+        if current is None:
+            self._next_ticket += 1
+            self._positions[order.symbol] = {"ticket": self._next_ticket, "symbol": order.symbol, "side": order.side,
+                                             "volume": order.volume, "price": price, "stopLoss": order.stop_loss}
+            ticket = self._next_ticket
+        elif current["side"] == order.side:
+            current["volume"] += order.volume
+            ticket = current["ticket"]
+        else:
+            ticket = current["ticket"]
+            remaining = current["volume"] - order.volume
+            if remaining > 0:
+                current["volume"] = remaining
+            else:
+                self._closed[ticket] = price
+                del self._positions[order.symbol]
+                if remaining < 0:
+                    self._next_ticket += 1
+                    self._positions[order.symbol] = {"ticket": self._next_ticket, "symbol": order.symbol, "side": order.side,
+                                                     "volume": -remaining, "price": price, "stopLoss": order.stop_loss}
+                    ticket = self._next_ticket
+        self._next_ticket += 1
+        return {"filled": True, "retcode": 10009, "order": self._next_ticket, "deal": self._next_ticket,
+                "ticket": ticket, "price": round(price, 2), "volume": order.volume, "message": "Executada (simulação)."}
+
+    def set_stop(self, symbol: str, ticket: int, stop_loss: float) -> dict:
+        position = self._positions.get(symbol)
+        if position is None or position["ticket"] != ticket:
+            return {"ok": False, "message": "Posição não encontrada."}
+        position["stopLoss"] = stop_loss
+        return {"ok": True, "message": "Stop atualizado (simulação)."}
+
+    def closing_price(self, ticket: int) -> float | None:
+        return self._closed.get(ticket)
 
 
 def create_backend(settings: Settings) -> Backend:

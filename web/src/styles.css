@@ -156,3 +156,11 @@ tr.selected td { background: var(--bg); }
 /* ---------- Fase 4: operação ---------- */
 td.row-actions { white-space: nowrap; }
 td .link { margin: 0 0.75rem 0 0; padding: 0; }
+
+/* ---------- Fase 5: execução ---------- */
+.mode-card.mode-mt5real { border: 2px solid var(--danger); }
+.mode-card.mode-mt5real .big { color: var(--danger); }
+.mode-card.mode-mt5demo .big { color: var(--primary); }
+.danger-banner { border-color: var(--danger); color: var(--text); border-width: 2px; }
+.badge-danger { background: var(--danger); border-color: var(--danger); color: #fff; font-weight: 700; }
+button.danger:disabled { opacity: 0.5; cursor: not-allowed; }

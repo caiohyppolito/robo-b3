@@ -4,7 +4,9 @@ using Microsoft.Extensions.DependencyInjection;
 using RoboB3.Application.Abstractions;
 using RoboB3.Application.Backtesting;
 using RoboB3.Application.Learning;
+using RoboB3.Application.Execution;
 using RoboB3.Application.Paper;
+using RoboB3.Infrastructure.Execution;
 using RoboB3.Infrastructure.MarketData.Mt5;
 using RoboB3.Infrastructure.Learning;
 using RoboB3.Infrastructure.MarketData;
@@ -55,6 +57,21 @@ public static class DependencyInjection
         services.AddScoped<IPortfolioProvider, PaperPortfolioProvider>();
         services.AddScoped<IPaperRepository, PaperRepository>();
         services.AddScoped<IStrategyAssignmentRepository, StrategyAssignmentRepository>();
+        services.AddScoped<IExecutionSettingsRepository, ExecutionSettingsRepository>();
+        services.AddScoped<IOrderExecutorFactory, OrderExecutorFactory>();
+        services.AddOptions<ExecutionOptions>().Bind(configuration.GetSection(ExecutionOptions.SectionName));
+
+        // Cliente de ordens SEM novas tentativas automáticas: repetir uma ordem pode duplicá-la.
+        services.AddHttpClient(OrderExecutorFactory.HttpClientName, (sp, client) =>
+        {
+            var gateway = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<GatewayOptions>>().Value;
+            client.BaseAddress = gateway.BaseUrl;
+            client.Timeout = TimeSpan.FromSeconds(20);
+            if (!string.IsNullOrWhiteSpace(gateway.Token))
+            {
+                client.DefaultRequestHeaders.Add(Mt5GatewayFeed.TokenHeader, gateway.Token);
+            }
+        });
 
         services.AddOptions<GatewayOptions>()
             .Bind(configuration.GetSection(GatewayOptions.SectionName))

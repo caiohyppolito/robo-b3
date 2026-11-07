@@ -25,6 +25,8 @@ internal sealed class FakeFeed(FakeTimeProvider clock) : IMarketDataFeed
 {
     public bool Connected { get; set; } = true;
 
+    public bool? IsDemo { get; set; } = true;
+
     public decimal Price { get; set; } = 130_000m;
 
     public decimal Spread { get; set; } = 5m;
@@ -33,7 +35,7 @@ internal sealed class FakeFeed(FakeTimeProvider clock) : IMarketDataFeed
     public DateTimeOffset? LastBarOpen { get; set; }
 
     public Task<FeedStatus> GetStatusAsync(CancellationToken cancellationToken) =>
-        Task.FromResult(new FeedStatus(Connected, "teste", "Servidor", 1, true, "Corretora", Connected ? null : "terminal fechado"));
+        Task.FromResult(new FeedStatus(Connected, "teste", "Servidor", 1, IsDemo, "Corretora", Connected ? null : "terminal fechado"));
 
     public Task<string> ResolveSymbolAsync(Asset asset, CancellationToken cancellationToken) =>
         Task.FromResult(asset.IsFuture ? $"{asset.Symbol}Z26" : asset.Symbol);
@@ -60,6 +62,65 @@ internal sealed class FakeFeed(FakeTimeProvider clock) : IMarketDataFeed
         Task.FromResult(new Quote(feedSymbol, Price - Spread, Price + Spread, Price, clock.GetUtcNow()));
 }
 
+/// <summary>Corretora em memória (compensação por símbolo), com recusas e stops controlados pelo teste.</summary>
+internal sealed class FakeBroker(Domain.Execution.ExecutionMode mode) : IOrderExecutor
+{
+    private long _nextTicket = 500;
+
+    public Domain.Execution.ExecutionMode Mode => mode;
+
+    public List<BrokerPosition> Positions { get; } = [];
+
+    public Dictionary<long, decimal> ClosingPrices { get; } = [];
+
+    public List<OrderInstruction> Sent { get; } = [];
+
+    public bool RejectNext { get; set; }
+
+    public decimal Equity { get; set; } = 50_000m;
+
+    public Task<OrderResult> SendAsync(OrderInstruction instruction, CancellationToken cancellationToken)
+    {
+        Sent.Add(instruction);
+        if (RejectNext)
+        {
+            RejectNext = false;
+            return Task.FromResult(new OrderResult(false, 0, 0, null, "Ordem recusada (10019): sem margem"));
+        }
+
+        var price = instruction.ReferencePrice + (instruction.Side == Domain.Trading.OrderSide.Buy ? 5m : -5m);
+        if (instruction.PositionTicket is { } ticket)
+        {
+            Positions.RemoveAll(p => p.Ticket == ticket);
+            return Task.FromResult(new OrderResult(true, price, instruction.Quantity, ticket, "Executada."));
+        }
+
+        var opened = new BrokerPosition(++_nextTicket, instruction.Symbol, instruction.Side, instruction.Quantity, price, instruction.StopLoss, true);
+        Positions.Add(opened);
+        return Task.FromResult(new OrderResult(true, price, instruction.Quantity, opened.Ticket, "Executada."));
+    }
+
+    public Task<bool> UpdateStopAsync(string symbol, long ticket, decimal stop, CancellationToken cancellationToken) => Task.FromResult(true);
+
+    public Task<IReadOnlyList<BrokerPosition>?> GetPositionsAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<BrokerPosition>?>(Positions.ToList());
+
+    public Task<decimal?> GetClosingPriceAsync(long ticket, CancellationToken cancellationToken) =>
+        Task.FromResult(ClosingPrices.TryGetValue(ticket, out var price) ? price : (decimal?)null);
+
+    public Task<decimal?> GetEquityAsync(CancellationToken cancellationToken) => Task.FromResult<decimal?>(Equity);
+}
+
+internal sealed class FakeExecutors(IOrderExecutor paper, IOrderExecutor broker) : IOrderExecutorFactory
+{
+    public IOrderExecutor For(Domain.Execution.ExecutionMode mode) => mode == Domain.Execution.ExecutionMode.Paper ? paper : broker;
+}
+
+internal sealed class FakeExecutionSettings(Domain.Execution.ExecutionSettings settings) : IExecutionSettingsRepository
+{
+    public Task<Domain.Execution.ExecutionSettings> GetAsync(CancellationToken cancellationToken) => Task.FromResult(settings);
+}
+
 public class PaperTradingTests
 {
     // Segunda-feira, 14h em Brasília.
@@ -67,10 +128,13 @@ public class PaperTradingTests
     private readonly RoboB3DbContext _db = new(new DbContextOptionsBuilder<RoboB3DbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
     private readonly FakeFeed _feed;
     private readonly TradingState _state;
+    private readonly Domain.Execution.ExecutionSettings _execution;
+    private readonly FakeBroker _broker = new(Domain.Execution.ExecutionMode.Mt5Demo);
 
     public PaperTradingTests()
     {
         _feed = new FakeFeed(_clock);
+        _execution = new Domain.Execution.ExecutionSettings(_clock.GetUtcNow());
         _state = TradingState.CreateHalted(_clock.GetUtcNow());
         _state.Resume("teste", _clock.GetUtcNow());
     }
@@ -88,6 +152,8 @@ public class PaperTradingTests
         new FixedState(_state),
         new FixedRiskSettings(),
         new TradeJournalRepository(_db),
+        new FakeExecutionSettings(_execution),
+        new FakeExecutors(new Application.Execution.SimulatedOrderExecutor(Options.Create(new BacktestOptions { SlippagePercent = 0 })), _broker),
         LearningIntegrationTests.Service(_db),
         new AuditLog(_db),
         _db,
@@ -246,7 +312,7 @@ public class PaperTradingTests
         _feed.Price = 128_000m;
         await Service().RunCycleAsync(CancellationToken.None);
 
-        var snapshot = await new PaperPortfolioProvider(new PaperRepository(_db), Options.Create(new TradingCapitalOptions()))
+        var snapshot = await new PaperPortfolioProvider(new PaperRepository(_db), new FakeExecutionSettings(_execution), Options.Create(new TradingCapitalOptions()))
             .GetSnapshotAsync(CancellationToken.None);
 
         // 2 contratos comprados a 130.005 e marcados a 128.000: −2.005 pts × R$ 0,20 × 2.
@@ -301,5 +367,145 @@ public class PaperTradingTests
 
         Assert.False(status.Connected);
         Assert.Contains("rodando", status.Message, StringComparison.Ordinal);
+    }
+
+    // ---------- Fase 5: execução no MetaTrader 5 ----------
+
+    private async Task<StrategyAssignment> AssignInDemoAsync(string symbol = "WIN")
+    {
+        var assignment = await AssignAsync(symbol, StrategyKeys.BuyAndHold);
+        _execution.ChangeTo(Domain.Execution.ExecutionMode.Mt5Demo, "teste", _clock.GetUtcNow());
+        return assignment;
+    }
+
+    [Fact]
+    public async Task No_mt5_a_entrada_vai_para_a_corretora_e_o_livro_usa_o_preco_e_o_ticket_dela()
+    {
+        await AssignInDemoAsync();
+
+        var report = await Service().RunCycleAsync(CancellationToken.None);
+
+        Assert.Equal(1, report.Opened);
+        var sent = Assert.Single(_broker.Sent);
+        Assert.Equal("WINZ26", sent.Symbol);
+        var position = await _db.PaperPositions.SingleAsync();
+        Assert.Equal(Domain.Execution.ExecutionMode.Mt5Demo, position.Mode);
+        Assert.Equal(_broker.Positions[0].Ticket, position.BrokerTicket);
+        Assert.Equal(130_010m, position.EntryPrice);
+        Assert.Equal(50_000m, (await _db.PaperAccounts.SingleAsync()).InitialCapital);
+        Assert.Contains(await _db.AuditEntries.ToListAsync(), a => a.Action == "ordem.executada");
+    }
+
+    [Fact]
+    public async Task Conta_logada_diferente_do_modo_trava_o_robo_sem_enviar_ordens()
+    {
+        await AssignInDemoAsync();
+        _feed.IsDemo = false;
+
+        var report = await Service().RunCycleAsync(CancellationToken.None);
+
+        Assert.True(_state.IsHalted);
+        Assert.Empty(_broker.Sent);
+        Assert.Contains(report.Messages, m => m.Contains("não corresponde ao modo", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Ordem_recusada_nao_abre_posicao_e_fica_na_auditoria()
+    {
+        await AssignInDemoAsync();
+        _broker.RejectNext = true;
+
+        var report = await Service().RunCycleAsync(CancellationToken.None);
+
+        Assert.Equal(0, report.Opened);
+        Assert.Empty(await _db.PaperPositions.ToListAsync());
+        Assert.Contains(report.Messages, m => m.Contains("sem margem", StringComparison.Ordinal));
+        Assert.Contains(await _db.AuditEntries.ToListAsync(), a => a.Action == "ordem.recusada");
+    }
+
+    [Fact]
+    public async Task Stop_executado_na_corretora_encerra_no_livro_ao_preco_real()
+    {
+        await AssignInDemoAsync();
+        await Service().RunCycleAsync(CancellationToken.None);
+        var ticket = _broker.Positions[0].Ticket;
+        _broker.Positions.Clear();
+        _broker.ClosingPrices[ticket] = 129_700m;
+
+        var report = await Service().RunCycleAsync(CancellationToken.None);
+
+        Assert.Empty(await _db.PaperPositions.ToListAsync());
+        var fill = await _db.PaperFills.OrderBy(f => f.Id).LastAsync();
+        Assert.Equal("encerrada na corretora", fill.Reason);
+        Assert.Equal(129_700m, fill.Price);
+        Assert.False(_state.IsHalted);
+        Assert.Single(await _db.TradeJournal.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Posicao_do_robo_na_corretora_sem_registro_trava_o_robo()
+    {
+        await AssignInDemoAsync();
+        _broker.Positions.Add(new BrokerPosition(9999, "WDOZ26", Domain.Trading.OrderSide.Buy, 1, 5_400m, null, IsRobot: true));
+
+        var report = await Service().RunCycleAsync(CancellationToken.None);
+
+        Assert.True(_state.IsHalted);
+        Assert.Contains(report.Messages, m => m.Contains("sem registro interno", StringComparison.Ordinal));
+        Assert.Equal(0, report.Opened);
+    }
+
+    [Fact]
+    public async Task Posicao_manual_na_corretora_nao_e_do_robo_e_nao_trava()
+    {
+        await AssignInDemoAsync();
+        _broker.Positions.Add(new BrokerPosition(9999, "PETR4", Domain.Trading.OrderSide.Buy, 100, 36m, null, IsRobot: false));
+
+        await Service().RunCycleAsync(CancellationToken.None);
+
+        Assert.False(_state.IsHalted);
+    }
+
+    [Fact]
+    public async Task Falha_ao_encerrar_trava_o_robo_e_mantem_a_posicao_para_nova_tentativa()
+    {
+        await AssignInDemoAsync();
+        await Service().RunCycleAsync(CancellationToken.None);
+        var position = await _db.PaperPositions.SingleAsync();
+        _broker.RejectNext = true;
+
+        await Assert.ThrowsAsync<Domain.Common.DomainException>(() => Service().ClosePositionAsync(position.Id, "caio", CancellationToken.None));
+
+        Assert.True(_state.IsHalted);
+        Assert.Single(await _db.PaperPositions.ToListAsync());
+
+        // Travado, a saída continua permitida: a nova tentativa encerra.
+        await Service().ClosePositionAsync(position.Id, "caio", CancellationToken.None);
+        Assert.Empty(await _db.PaperPositions.ToListAsync());
+    }
+
+    [Fact]
+    public async Task No_mt5_duas_alocacoes_nao_abrem_posicao_no_mesmo_contrato()
+    {
+        await AssignInDemoAsync();
+        var second = new StrategyAssignment("WIN", StrategyKeys.SmaCross, new Dictionary<string, decimal>(), Timeframe.M5, false, false, _clock.GetUtcNow());
+        second.Enable();
+        _db.StrategyAssignments.Add(second);
+        await _db.SaveChangesAsync();
+        await Service().RunCycleAsync(CancellationToken.None);
+
+        // Força a segunda alocação a querer entrar no mesmo contrato numa barra nova.
+        _clock.Advance(TimeSpan.FromMinutes(5));
+        var buyAndHold = await _db.StrategyAssignments.SingleAsync(a => a.StrategyKey == StrategyKeys.BuyAndHold);
+        _db.StrategyAssignments.Remove(buyAndHold);
+        var another = new StrategyAssignment("WIN", StrategyKeys.BuyAndHold, new Dictionary<string, decimal>(), Timeframe.M15, false, false, _clock.GetUtcNow());
+        another.Enable();
+        _db.StrategyAssignments.Add(another);
+        await _db.SaveChangesAsync();
+
+        var report = await Service().RunCycleAsync(CancellationToken.None);
+
+        Assert.Single(_broker.Positions);
+        Assert.Contains(report.Messages, m => m.Contains("já existe posição do robô neste contrato", StringComparison.Ordinal));
     }
 }

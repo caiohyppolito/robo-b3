@@ -1,5 +1,6 @@
 using RoboB3.Domain.Backtesting;
 using RoboB3.Domain.Common;
+using RoboB3.Domain.Execution;
 using RoboB3.Domain.Learning;
 using RoboB3.Domain.Risk;
 using RoboB3.Domain.Strategies;
@@ -8,20 +9,20 @@ using RoboB3.Domain.Trading;
 namespace RoboB3.Domain.Paper;
 
 /// <summary>
-/// Conta simulada: as ordens são executadas aqui, com preços reais do mercado, e nunca chegam à corretora.
-/// O caixa é o patrimônio realizado; o patrimônio total soma o resultado aberto das posições.
+/// Livro do robô em um modo de execução (simulado, MT5 demo ou MT5 real): caixa realizado, pico e base do dia.
+/// O patrimônio total soma o resultado aberto das posições. Cada modo tem o seu livro.
 /// </summary>
 public sealed class PaperAccount
 {
-    public const int SingletonId = 1;
+    public const int SingletonId = (int)ExecutionMode.Paper;
 
     private PaperAccount()
     {
     }
 
-    private PaperAccount(decimal initialCapital, DateTimeOffset now)
+    private PaperAccount(decimal initialCapital, DateTimeOffset now, ExecutionMode mode)
     {
-        Id = SingletonId;
+        Id = (int)mode;
         InitialCapital = Guard.Positive(initialCapital, nameof(initialCapital));
         Cash = initialCapital;
         PeakEquity = initialCapital;
@@ -31,6 +32,8 @@ public sealed class PaperAccount
     }
 
     public int Id { get; private set; }
+
+    public ExecutionMode Mode => (ExecutionMode)Id;
 
     public decimal InitialCapital { get; private set; }
 
@@ -48,7 +51,8 @@ public sealed class PaperAccount
 
     public DateTimeOffset CreatedAt { get; private set; }
 
-    public static PaperAccount Open(decimal initialCapital, DateTimeOffset now) => new(initialCapital, now);
+    public static PaperAccount Open(decimal initialCapital, DateTimeOffset now, ExecutionMode mode = ExecutionMode.Paper) =>
+        new(initialCapital, now, mode);
 
     public decimal Equity(IEnumerable<PaperPosition> positions) =>
         Cash + (positions ?? throw new ArgumentNullException(nameof(positions))).Sum(p => p.UnrealizedProfit);
@@ -82,35 +86,36 @@ public sealed class PaperAccount
         string strategyKey,
         PositionDirection direction,
         int quantity,
-        decimal marketPrice,
-        decimal? stopDistance,
+        decimal executedPrice,
+        decimal? stop,
         CostModel costs,
         FeatureVector? features,
         double? probability,
-        DateTimeOffset time)
+        DateTimeOffset time,
+        long? brokerTicket = null)
     {
         ArgumentNullException.ThrowIfNull(instrument);
         ArgumentNullException.ThrowIfNull(costs);
         var isBuy = direction == PositionDirection.Long;
-        var price = costs.Fill(marketPrice, isBuy);
+        var price = executedPrice;
         var cost = costs.OrderCost(price * quantity * instrument.Multiplier, quantity, instrument.IsFuture);
-        decimal? stop = stopDistance is > 0 ? price - ((int)direction * stopDistance.Value) : null;
 
         var position = new PaperPosition(assignmentId, instrument.Symbol, contractSymbol, strategyKey, direction, quantity, price, stop,
-            instrument.Multiplier, instrument.IsFuture, cost, features, probability, time);
+            instrument.Multiplier, instrument.IsFuture, cost, features, probability, time, Mode, brokerTicket);
         Cash -= cost;
         CostsPaid += cost;
 
-        var fill = new PaperFill(position.Id, contractSymbol, isBuy ? OrderSide.Buy : OrderSide.Sell, quantity, Math.Round(price, 4), Math.Round(cost, 2), null, "entrada", time);
+        var fill = new PaperFill(position.Id, contractSymbol, isBuy ? OrderSide.Buy : OrderSide.Sell, quantity, Math.Round(price, 4), Math.Round(cost, 2), null, "entrada", time, Mode);
         return (position, fill);
     }
 
-    public (PaperFill Fill, TradeJournalEntry Journal) ClosePosition(PaperPosition position, decimal marketPrice, CostModel costs, string reason, DateTimeOffset time)
+    /// <param name="executedPrice">Preço efetivo da saída (já com slippage na simulação, ou o preço da corretora).</param>
+    public (PaperFill Fill, TradeJournalEntry Journal) ClosePosition(PaperPosition position, decimal executedPrice, CostModel costs, string reason, DateTimeOffset time)
     {
         ArgumentNullException.ThrowIfNull(position);
         ArgumentNullException.ThrowIfNull(costs);
         var isBuy = position.Direction == PositionDirection.Short;
-        var price = costs.Fill(marketPrice, isBuy);
+        var price = executedPrice;
         var gross = (price - position.EntryPrice) * position.Quantity * position.Multiplier * (int)position.Direction;
         var cost = costs.OrderCost(price * position.Quantity * position.Multiplier, position.Quantity, position.IsFuture);
         var net = gross - cost - position.EntryCost;
@@ -122,7 +127,7 @@ public sealed class PaperAccount
 
         var invested = position.EntryPrice * position.Quantity * position.Multiplier;
         var journal = new TradeJournalEntry(
-            TradeSource.Paper,
+            Mode == ExecutionMode.Mt5Real ? TradeSource.Live : TradeSource.Paper,
             position.StrategyKey,
             position.Symbol,
             position.Direction,
@@ -135,7 +140,7 @@ public sealed class PaperAccount
             time);
 
         var fill = new PaperFill(position.Id, position.ContractSymbol, isBuy ? OrderSide.Buy : OrderSide.Sell, position.Quantity,
-            Math.Round(price, 4), Math.Round(cost, 2), Math.Round(net, 2), reason, time);
+            Math.Round(price, 4), Math.Round(cost, 2), Math.Round(net, 2), reason, time, Mode);
         return (fill, journal);
     }
 }

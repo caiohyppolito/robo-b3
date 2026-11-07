@@ -407,6 +407,7 @@ export interface PaperPosition {
   unrealizedProfit: number;
   probability: number | null;
   entryTime: string;
+  brokerTicket: number | null;
 }
 
 export interface PaperFill {
@@ -421,6 +422,7 @@ export interface PaperFill {
 }
 
 export interface PaperAccount {
+  mode: ExecutionMode;
   initialCapital: number;
   equity: number;
   cash: number;
@@ -452,4 +454,29 @@ export const paperApi = {
   setEnabled: (id: string, enabled: boolean) =>
     request<Assignment>(`/api/paper/assignments/${encodeURIComponent(id)}/${enabled ? "enable" : "disable"}`, { method: "POST" }),
   deleteAssignment: (id: string) => requestNoContent(`/api/paper/assignments/${encodeURIComponent(id)}`, "DELETE"),
+};
+
+// ---------- Execução (Fase 5) ----------
+
+export type ExecutionMode = "Paper" | "Mt5Demo" | "Mt5Real";
+
+export interface ExecutionStatus {
+  mode: ExecutionMode;
+  changedBy: string;
+  changedAt: string;
+  allowMt5: boolean;
+  allowRealAccount: boolean;
+  feed: FeedStatus;
+}
+
+export const executionApi = {
+  get: () => request<ExecutionStatus>("/api/execution"),
+  change: (mode: ExecutionMode, confirmation?: string) =>
+    request<ExecutionStatus>("/api/execution", { method: "PUT", body: JSON.stringify({ mode, confirmation }) }),
+};
+
+export const MODE_LABEL: Record<ExecutionMode, string> = {
+  Paper: "Simulado",
+  Mt5Demo: "MT5 conta demo",
+  Mt5Real: "MT5 CONTA REAL",
 };

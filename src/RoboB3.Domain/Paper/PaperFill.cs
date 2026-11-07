@@ -1,3 +1,4 @@
+using RoboB3.Domain.Execution;
 using RoboB3.Domain.Trading;
 
 namespace RoboB3.Domain.Paper;
@@ -11,8 +12,9 @@ public sealed class PaperFill
         Reason = string.Empty;
     }
 
-    public PaperFill(Guid positionId, string symbol, OrderSide side, int quantity, decimal price, decimal cost, decimal? realizedProfit, string reason, DateTimeOffset time)
+    public PaperFill(Guid positionId, string symbol, OrderSide side, int quantity, decimal price, decimal cost, decimal? realizedProfit, string reason, DateTimeOffset time, ExecutionMode mode = ExecutionMode.Paper)
     {
+        Mode = mode;
         PositionId = positionId;
         Symbol = symbol;
         Side = side;
@@ -25,6 +27,8 @@ public sealed class PaperFill
     }
 
     public long Id { get; private set; }
+
+    public ExecutionMode Mode { get; private set; } = ExecutionMode.Paper;
 
     public Guid PositionId { get; private set; }
 

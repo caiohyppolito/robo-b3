@@ -23,9 +23,11 @@ def test_sem_token_e_recusado():
     assert TestClient(app, headers={"X-Gateway-Token": "errado"}).get("/health").status_code == 401
 
 
-def test_nao_existe_rota_de_ordens(client):
-    for path in ("/order", "/orders", "/trade", "/positions"):
-        assert client.post(path, json={}).status_code in (404, 405)
+def test_ordens_ficam_desligadas_por_padrao(client):
+    order = {"symbol": "WINZ26", "side": "buy", "volume": 1, "client_id": "pedido-0001", "expected_mode": "demo"}
+    response = client.post("/orders", json=order)
+    assert response.status_code == 403
+    assert "ROBOB3_ORDERS" in response.json()["detail"]
 
 
 def test_saude_no_modo_simulacao(client):

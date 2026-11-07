@@ -1,3 +1,4 @@
+using RoboB3.Domain.Execution;
 using RoboB3.Domain.MarketData;
 using RoboB3.Domain.Paper;
 
@@ -30,13 +31,14 @@ public interface IMarketDataFeed
     Task<Quote> GetQuoteAsync(string feedSymbol, CancellationToken cancellationToken);
 }
 
+/// <summary>Livro do robô (conta, posições e execuções), separado por modo de execução.</summary>
 public interface IPaperRepository
 {
-    Task<PaperAccount?> GetAccountAsync(CancellationToken cancellationToken);
+    Task<PaperAccount?> GetAccountAsync(ExecutionMode mode, CancellationToken cancellationToken);
 
     void AddAccount(PaperAccount account);
 
-    Task<List<PaperPosition>> ListPositionsAsync(CancellationToken cancellationToken);
+    Task<List<PaperPosition>> ListPositionsAsync(ExecutionMode mode, CancellationToken cancellationToken);
 
     void AddPosition(PaperPosition position);
 
@@ -44,10 +46,10 @@ public interface IPaperRepository
 
     void AddFill(PaperFill fill);
 
-    Task<IReadOnlyList<PaperFill>> ListRecentFillsAsync(int count, CancellationToken cancellationToken);
+    Task<IReadOnlyList<PaperFill>> ListRecentFillsAsync(ExecutionMode mode, int count, CancellationToken cancellationToken);
 
-    /// <summary>Apaga conta, posições e execuções simuladas (o diário da IA é mantido).</summary>
-    Task ResetAsync(CancellationToken cancellationToken);
+    /// <summary>Apaga conta, posições e execuções do modo (o diário da IA é mantido).</summary>
+    Task ResetAsync(ExecutionMode mode, CancellationToken cancellationToken);
 }
 
 public interface IStrategyAssignmentRepository

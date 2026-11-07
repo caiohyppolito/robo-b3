@@ -7,6 +7,7 @@ using RoboB3.Domain.Analysis;
 using RoboB3.Domain.Audit;
 using RoboB3.Domain.Backtesting;
 using RoboB3.Domain.Common;
+using RoboB3.Domain.Execution;
 using RoboB3.Domain.Learning;
 using RoboB3.Domain.MarketData;
 using RoboB3.Domain.Paper;
@@ -19,10 +20,11 @@ namespace RoboB3.Application.Paper;
 public sealed record CycleReport(bool FeedConnected, int Opened, int Closed, IReadOnlyList<string> Messages);
 
 /// <summary>
-/// Um ciclo da operação simulada, com as mesmas regras do backtest:
-/// marca as posições a mercado, executa stops e o encerramento de day trade, e avalia cada alocação
-/// apenas quando fecha uma barra nova. Entradas passam pela IA (se ativada) e pelo <see cref="RiskManager"/>;
-/// saídas nunca são bloqueadas. Nada é enviado à corretora.
+/// Um ciclo de operação, com as mesmas regras do backtest e no modo de execução vigente
+/// (simulado, MT5 demo ou MT5 real):
+/// confere a conta e concilia as posições com a corretora, marca a mercado, executa stops e o encerramento
+/// de day trade, e avalia cada alocação só quando fecha uma barra nova. Entradas passam pela IA (se ativada)
+/// e pelo <see cref="RiskManager"/>; saídas nunca são bloqueadas. Qualquer divergência trava o robô.
 /// </summary>
 public sealed partial class PaperTradingService(
     IMarketDataFeed feed,
@@ -32,6 +34,8 @@ public sealed partial class PaperTradingService(
     ITradingStateRepository tradingState,
     IRiskSettingsRepository riskSettings,
     ITradeJournalRepository journal,
+    IExecutionSettingsRepository executionSettings,
+    IOrderExecutorFactory executors,
     LearningService learning,
     IAuditLog audit,
     IUnitOfWork unitOfWork,
@@ -41,18 +45,29 @@ public sealed partial class PaperTradingService(
     TimeProvider clock,
     ILogger<PaperTradingService> logger)
 {
+    public const string Actor = "robo";
+
     public async Task<CycleReport> RunCycleAsync(CancellationToken cancellationToken)
     {
         var status = await feed.GetStatusAsync(cancellationToken);
+        var mode = (await executionSettings.GetAsync(cancellationToken)).Mode;
         if (!status.Connected)
         {
             return new CycleReport(false, 0, 0, [$"MetaTrader 5 desconectado: {status.Message}"]);
         }
 
-        var cycle = await StartCycleAsync(cancellationToken);
+        var cycle = await StartCycleAsync(mode, cancellationToken);
+        if (ExecutionPolicy.FindAccountMismatch(mode, status.Connected, status.IsDemo) is { } mismatch)
+        {
+            Halt(cycle, mismatch);
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+            return new CycleReport(true, 0, 0, cycle.Messages);
+        }
+
+        await ReconcileAsync(cycle, cancellationToken);
         await MarkToMarketAsync(cycle, cancellationToken);
         await ApplyStopsAsync(cycle, cancellationToken);
-        ApplyDayTradeClose(cycle);
+        await ApplyDayTradeCloseAsync(cycle, cancellationToken);
 
         foreach (var assignment in cycle.Assignments.Where(a => a.IsEnabled))
         {
@@ -69,7 +84,7 @@ public sealed partial class PaperTradingService(
         await unitOfWork.SaveChangesAsync(cancellationToken);
         foreach (var message in cycle.Messages)
         {
-            LogMessage(message);
+            LogMessage(mode.Describe(), message);
         }
 
         return new CycleReport(true, cycle.Opened, cycle.Closed, cycle.Messages);
@@ -78,51 +93,104 @@ public sealed partial class PaperTradingService(
     /// <summary>Encerramento manual a mercado. Sempre permitido: reduzir risco nunca é bloqueado.</summary>
     public async Task ClosePositionAsync(Guid positionId, string actor, CancellationToken cancellationToken)
     {
-        var cycle = await StartCycleAsync(cancellationToken);
+        var mode = (await executionSettings.GetAsync(cancellationToken)).Mode;
+        var cycle = await StartCycleAsync(mode, cancellationToken);
         var position = cycle.Positions.FirstOrDefault(p => p.Id == positionId)
             ?? throw new DomainException("Posição não encontrada.");
         var quote = await feed.GetQuoteAsync(position.ContractSymbol, cancellationToken);
-        Close(cycle, position, quote.PriceFor(isBuy: position.Direction == PositionDirection.Short), "manual");
-        audit.Record(new AuditEntry("paper.posicao-encerrada", actor, $"{position.ContractSymbol} {position.Quantity}", cycle.Now));
+        if (!await CloseAsync(cycle, position, quote, "manual", cancellationToken))
+        {
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+            throw new DomainException(cycle.Messages.LastOrDefault() ?? "A corretora não executou o encerramento.");
+        }
+
+        audit.Record(new AuditEntry("operacao.posicao-encerrada", actor, $"{position.ContractSymbol} {position.Quantity} ({mode.Describe()})", cycle.Now));
         await unitOfWork.SaveChangesAsync(cancellationToken);
     }
 
-    /// <summary>Zera a conta simulada. Exige o robô travado e nenhuma posição aberta.</summary>
+    /// <summary>Zera o livro do modo vigente. Exige o robô travado e nenhuma posição aberta.</summary>
     public async Task ResetAsync(string actor, CancellationToken cancellationToken)
     {
+        var mode = (await executionSettings.GetAsync(cancellationToken)).Mode;
         if (!(await tradingState.GetAsync(cancellationToken)).IsHalted)
         {
-            throw new DomainException("Trave o robô antes de reiniciar a conta simulada.");
+            throw new DomainException("Trave o robô antes de reiniciar a conta.");
         }
 
-        if ((await paper.ListPositionsAsync(cancellationToken)).Count > 0)
+        if ((await paper.ListPositionsAsync(mode, cancellationToken)).Count > 0)
         {
-            throw new DomainException("Encerre as posições abertas antes de reiniciar a conta simulada.");
+            throw new DomainException("Encerre as posições abertas antes de reiniciar a conta.");
         }
 
-        await paper.ResetAsync(cancellationToken);
-        audit.Record(new AuditEntry("paper.conta-reiniciada", actor, null, clock.GetUtcNow()));
+        await paper.ResetAsync(mode, cancellationToken);
+        audit.Record(new AuditEntry("operacao.conta-reiniciada", actor, mode.Describe(), clock.GetUtcNow()));
         await unitOfWork.SaveChangesAsync(cancellationToken);
     }
 
-    private async Task<Cycle> StartCycleAsync(CancellationToken cancellationToken)
+    private async Task<Cycle> StartCycleAsync(ExecutionMode mode, CancellationToken cancellationToken)
     {
         var now = clock.GetUtcNow();
-        var account = await paper.GetAccountAsync(cancellationToken);
+        var executor = executors.For(mode);
+        var account = await paper.GetAccountAsync(mode, cancellationToken);
         if (account is null)
         {
-            account = PaperAccount.Open(capitalOptions.Value.InitialCapital, now);
+            // No MT5, o livro começa com o patrimônio real da conta; na simulação, com o capital configurado.
+            var capital = await executor.GetEquityAsync(cancellationToken) ?? capitalOptions.Value.InitialCapital;
+            account = PaperAccount.Open(capital, now, mode);
             paper.AddAccount(account);
         }
 
         return new Cycle(
             now,
+            mode,
+            executor,
             account,
-            await paper.ListPositionsAsync(cancellationToken),
+            await paper.ListPositionsAsync(mode, cancellationToken),
             await assignments.ListAsync(cancellationToken),
             (await assets.ListAsync(onlyActive: false, cancellationToken)).ToDictionary(a => a.Symbol),
             await tradingState.GetAsync(cancellationToken),
             (await riskSettings.GetAsync(cancellationToken)).Limits);
+    }
+
+    /// <summary>
+    /// Compara o livro do robô com a corretora. Posição encerrada lá (ex.: stop na corretora) é encerrada aqui
+    /// ao preço real; posição do robô na corretora sem registro interno, ou com volume diferente, trava o robô.
+    /// </summary>
+    private async Task ReconcileAsync(Cycle cycle, CancellationToken cancellationToken)
+    {
+        var broker = await cycle.Executor.GetPositionsAsync(cancellationToken);
+        if (broker is null)
+        {
+            return;
+        }
+
+        var byTicket = broker.ToDictionary(b => b.Ticket);
+        foreach (var position in cycle.Positions.ToList())
+        {
+            if (position.BrokerTicket is not { } ticket)
+            {
+                Halt(cycle, $"Posição {position.ContractSymbol} sem ticket da corretora.");
+                continue;
+            }
+
+            if (!byTicket.TryGetValue(ticket, out var match))
+            {
+                var price = await cycle.Executor.GetClosingPriceAsync(ticket, cancellationToken) ?? position.MarkPrice;
+                RecordClose(cycle, position, price, "encerrada na corretora");
+                continue;
+            }
+
+            if (match.Volume != position.Quantity)
+            {
+                Halt(cycle, $"Volume divergente em {position.ContractSymbol}: robô {position.Quantity}, corretora {match.Volume}.");
+            }
+        }
+
+        var known = cycle.Positions.Select(p => p.BrokerTicket).ToHashSet();
+        foreach (var unknown in broker.Where(b => b.IsRobot && !known.Contains(b.Ticket)))
+        {
+            Halt(cycle, $"Posição do robô na corretora sem registro interno: {unknown.Symbol} {unknown.Volume} (ticket {unknown.Ticket}).");
+        }
     }
 
     private async Task MarkToMarketAsync(Cycle cycle, CancellationToken cancellationToken)
@@ -145,12 +213,12 @@ public sealed partial class PaperTradingService(
             if (await FreshQuoteAsync(cycle, position.ContractSymbol, cancellationToken) is { } quote
                 && position.IsStopHit(quote.Bid, quote.Ask))
             {
-                Close(cycle, position, quote.PriceFor(isBuy: position.Direction == PositionDirection.Short), "stop");
+                await CloseAsync(cycle, position, quote, "stop", cancellationToken);
             }
         }
     }
 
-    private void ApplyDayTradeClose(Cycle cycle)
+    private async Task ApplyDayTradeCloseAsync(Cycle cycle, CancellationToken cancellationToken)
     {
         if (B3Calendar.LocalTime(cycle.Now) < paperOptions.Value.DayTradeFlattenAt)
         {
@@ -162,7 +230,7 @@ public sealed partial class PaperTradingService(
         {
             if (cycle.Quotes.TryGetValue(position.ContractSymbol, out var quote))
             {
-                Close(cycle, position, quote.PriceFor(isBuy: position.Direction == PositionDirection.Short), "fim do pregão");
+                await CloseAsync(cycle, position, quote, "fim do pregão", cancellationToken);
             }
         }
     }
@@ -209,9 +277,11 @@ public sealed partial class PaperTradingService(
             position.CountBar();
             if (target == position.Direction)
             {
-                if (signal.StopPrice is { } stop)
+                if (signal.StopPrice is { } stop && position.TightenStop(stop)
+                    && position.BrokerTicket is { } ticket
+                    && !await cycle.Executor.UpdateStopAsync(position.ContractSymbol, ticket, stop, cancellationToken))
                 {
-                    position.TightenStop(stop);
+                    cycle.Messages.Add($"{position.ContractSymbol}: a corretora não aceitou o novo stop {stop}; o robô segue vigiando o stop.");
                 }
 
                 return;
@@ -229,9 +299,9 @@ public sealed partial class PaperTradingService(
             return;
         }
 
-        if (position is not null)
+        if (position is not null && !await CloseAsync(cycle, position, quote, "sinal", cancellationToken))
         {
-            Close(cycle, position, quote.PriceFor(isBuy: position.Direction == PositionDirection.Short), "sinal");
+            return;
         }
 
         if (target != PositionDirection.Flat)
@@ -258,6 +328,8 @@ public sealed partial class PaperTradingService(
             : RiskManager.FindGlobalBreach(cycle.Account.Snapshot(cycle.Positions), cycle.Limits) is { } breach ? breach
             : localTime < options.NoEntriesBefore || localTime > options.NoEntriesAfter ? "fora do horário de entradas"
             : assignment.FlattenAtDayEnd && localTime >= options.DayTradeFlattenAt ? "day trade após o horário de encerramento"
+            : cycle.Mode.SendsToBroker() && cycle.Positions.Any(p => p.ContractSymbol == contract)
+                ? "já existe posição do robô neste contrato (a corretora soma posições do mesmo ativo)"
             : null;
         if (blocked is not null)
         {
@@ -281,7 +353,7 @@ public sealed partial class PaperTradingService(
 
         var isBuy = target == PositionDirection.Long;
         var price = quote.PriceFor(isBuy);
-        decimal? stopDistance = signal.StopPrice is { } stop ? Math.Abs(history.Current.Close - stop) : null;
+        decimal? stopDistance = signal.StopPrice is { } signalStop ? Math.Abs(history.Current.Close - signalStop) : null;
         var equity = cycle.Account.Equity(cycle.Positions);
         var otherContracts = cycle.Positions.Where(p => p.IsFuture).Sum(p => p.Quantity);
         var quantity = PositionSizer.Size(price, stopDistance, equity, options.RiskPerTradePercent, instrument, cycle.Limits, otherContracts);
@@ -291,7 +363,8 @@ public sealed partial class PaperTradingService(
             return;
         }
 
-        var order = new OrderRequest(asset.Symbol, asset.AssetClass, isBuy ? OrderSide.Buy : OrderSide.Sell, quantity, price * instrument.Multiplier);
+        var side = isBuy ? OrderSide.Buy : OrderSide.Sell;
+        var order = new OrderRequest(asset.Symbol, asset.AssetClass, side, quantity, price * instrument.Multiplier);
         var decision = RiskManager.Evaluate(order, cycle.Account.Snapshot(cycle.Positions), cycle.Limits, cycle.State);
         if (!decision.IsApproved)
         {
@@ -299,28 +372,44 @@ public sealed partial class PaperTradingService(
             return;
         }
 
-        var (position, fill) = cycle.Account.OpenPosition(assignment.Id, instrument, contract, assignment.StrategyKey, target, quantity,
-            price, stopDistance, backtestOptions.Value.Costs(), features, probability, cycle.Now);
+        decimal? stop = stopDistance is > 0 ? RoundToTick(price - ((int)target * stopDistance.Value), instrument) : null;
+        var instruction = new OrderInstruction(contract, side, quantity, price, stop, null, NewClientId("e"), $"entrada {assignment.StrategyKey}");
+        var result = await cycle.Executor.SendAsync(instruction, cancellationToken);
+        AuditOrder(cycle, instruction, result);
+        if (!result.Filled || result.Quantity <= 0)
+        {
+            cycle.Messages.Add($"{contract}: ordem de entrada não executada: {result.Message}");
+            return;
+        }
+
+        var (position, fill) = cycle.Account.OpenPosition(assignment.Id, instrument, contract, assignment.StrategyKey, target, result.Quantity,
+            result.Price, stop, backtestOptions.Value.Costs(), features, probability, cycle.Now, result.BrokerTicket);
         paper.AddPosition(position);
         paper.AddFill(fill);
         cycle.Positions.Add(position);
         cycle.Opened++;
-        cycle.Messages.Add($"{contract}: {(isBuy ? "compra" : "venda")} de {quantity} a {fill.Price}.");
+        cycle.Messages.Add($"{contract}: {(isBuy ? "compra" : "venda")} de {result.Quantity} a {fill.Price}.");
     }
 
-    private static string DescribeBar(Candle candle, Timeframe timeframe) =>
-        timeframe == Timeframe.D1
-            ? $"de {DateOnly.FromDateTime(candle.OpenTime.UtcDateTime):dd/MM}"
-            : $"das {B3Calendar.ToLocal(candle.OpenTime):dd/MM HH:mm}";
-
-    private static string Describe(PositionDirection direction) => direction switch
+    /// <returns>Falso se a corretora não executou: a posição continua aberta e o robô é travado.</returns>
+    private async Task<bool> CloseAsync(Cycle cycle, PaperPosition position, Quote quote, string reason, CancellationToken cancellationToken)
     {
-        PositionDirection.Long => "comprado",
-        PositionDirection.Short => "vendido",
-        _ => "fora do mercado",
-    };
+        var side = position.Direction == PositionDirection.Long ? OrderSide.Sell : OrderSide.Buy;
+        var instruction = new OrderInstruction(position.ContractSymbol, side, position.Quantity, quote.PriceFor(side == OrderSide.Buy),
+            null, position.BrokerTicket, NewClientId("s"), reason);
+        var result = await cycle.Executor.SendAsync(instruction, cancellationToken);
+        AuditOrder(cycle, instruction, result);
+        if (!result.Filled)
+        {
+            Halt(cycle, $"Falha ao encerrar {position.ContractSymbol} ({reason}): {result.Message} A posição continua aberta.");
+            return false;
+        }
 
-    private void Close(Cycle cycle, PaperPosition position, decimal price, string reason)
+        RecordClose(cycle, position, result.Price, reason);
+        return true;
+    }
+
+    private void RecordClose(Cycle cycle, PaperPosition position, decimal price, string reason)
     {
         var (fill, entry) = cycle.Account.ClosePosition(position, price, backtestOptions.Value.Costs(), reason, cycle.Now);
         paper.AddFill(fill);
@@ -329,6 +418,41 @@ public sealed partial class PaperTradingService(
         cycle.Positions.Remove(position);
         cycle.Closed++;
         cycle.Messages.Add($"{position.ContractSymbol}: encerrada ({reason}), resultado {fill.RealizedProfit:C}.");
+    }
+
+    /// <summary>Trava o robô (bloqueia entradas; saídas continuam). Destravar é sempre humano.</summary>
+    private void Halt(Cycle cycle, string reason)
+    {
+        cycle.Messages.Add($"ROBÔ TRAVADO: {reason}");
+        if (!cycle.State.IsHalted)
+        {
+            cycle.State.Halt(reason, Actor, cycle.Now);
+            audit.Record(new AuditEntry("kill-switch.halt", Actor, reason, cycle.Now));
+        }
+    }
+
+    private void AuditOrder(Cycle cycle, OrderInstruction instruction, OrderResult result)
+    {
+        if (!cycle.Mode.SendsToBroker())
+        {
+            return;
+        }
+
+        audit.Record(new AuditEntry(result.Filled ? "ordem.executada" : "ordem.recusada", Actor,
+            $"[{cycle.Mode.Describe()}] {instruction.Side} {instruction.Quantity} {instruction.Symbol} ({instruction.Reason}) " +
+            $"stop={instruction.StopLoss} id={instruction.ClientOrderId}: {result.Message} preço={result.Price} ticket={result.BrokerTicket}",
+            cycle.Now));
+    }
+
+    private static string NewClientId(string kind) => $"{kind}-{Guid.NewGuid():N}";
+
+    private static decimal RoundToTick(decimal price, InstrumentSpec instrument)
+    {
+        // Mini índice anda de 5 em 5 pontos; mini dólar, de 0,5; ações, de 0,01.
+        var tick = instrument.Symbol.StartsWith("WIN", StringComparison.Ordinal) ? 5m
+            : instrument.Symbol.StartsWith("WDO", StringComparison.Ordinal) ? 0.5m
+            : 0.01m;
+        return Math.Round(price / tick, MidpointRounding.AwayFromZero) * tick;
     }
 
     private async Task<Quote?> FreshQuoteAsync(Cycle cycle, string symbol, CancellationToken cancellationToken)
@@ -350,11 +474,25 @@ public sealed partial class PaperTradingService(
         return quote.IsFresh(cycle.Now, TimeSpan.FromSeconds(paperOptions.Value.MaxQuoteAgeSeconds)) ? quote : null;
     }
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Simulação: {Message}")]
-    private partial void LogMessage(string message);
+    private static string DescribeBar(Candle candle, Timeframe timeframe) =>
+        timeframe == Timeframe.D1
+            ? $"de {DateOnly.FromDateTime(candle.OpenTime.UtcDateTime):dd/MM}"
+            : $"das {B3Calendar.ToLocal(candle.OpenTime):dd/MM HH:mm}";
+
+    private static string Describe(PositionDirection direction) => direction switch
+    {
+        PositionDirection.Long => "comprado",
+        PositionDirection.Short => "vendido",
+        _ => "fora do mercado",
+    };
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Operação ({Mode}): {Message}")]
+    private partial void LogMessage(string mode, string message);
 
     private sealed class Cycle(
         DateTimeOffset now,
+        ExecutionMode mode,
+        IOrderExecutor executor,
         PaperAccount account,
         List<PaperPosition> positions,
         IReadOnlyList<StrategyAssignment> assignments,
@@ -363,6 +501,10 @@ public sealed partial class PaperTradingService(
         RiskLimits limits)
     {
         public DateTimeOffset Now { get; } = now;
+
+        public ExecutionMode Mode { get; } = mode;
+
+        public IOrderExecutor Executor { get; } = executor;
 
         public PaperAccount Account { get; } = account;
 

@@ -54,6 +54,7 @@ internal sealed class PaperAccountConfiguration : IEntityTypeConfiguration<Paper
         builder.ToTable("PaperAccount");
         builder.HasKey(a => a.Id);
         builder.Property(a => a.Id).ValueGeneratedNever();
+        builder.Ignore(a => a.Mode);
         foreach (var name in new[]
         {
             nameof(PaperAccount.InitialCapital), nameof(PaperAccount.Cash), nameof(PaperAccount.PeakEquity),
@@ -76,6 +77,8 @@ internal sealed class PaperPositionConfiguration : IEntityTypeConfiguration<Pape
         builder.Property(p => p.ContractSymbol).HasMaxLength(30);
         builder.Property(p => p.StrategyKey).HasMaxLength(50);
         builder.Property(p => p.Direction).HasConversion<string>().HasMaxLength(10);
+        builder.Property(p => p.Mode).HasConversion<string>().HasMaxLength(10).HasDefaultValue(Domain.Execution.ExecutionMode.Paper);
+        builder.HasIndex(p => p.Mode);
         foreach (var name in new[]
         {
             nameof(PaperPosition.EntryPrice), nameof(PaperPosition.Stop), nameof(PaperPosition.Multiplier),
@@ -101,9 +104,22 @@ internal sealed class PaperFillConfiguration : IEntityTypeConfiguration<PaperFil
         builder.Property(f => f.Symbol).HasMaxLength(30);
         builder.Property(f => f.Side).HasConversion<string>().HasMaxLength(10);
         builder.Property(f => f.Reason).HasMaxLength(100);
+        builder.Property(f => f.Mode).HasConversion<string>().HasMaxLength(10).HasDefaultValue(Domain.Execution.ExecutionMode.Paper);
         builder.Property(f => f.Price).HasPrecision(18, 6);
         builder.Property(f => f.Cost).HasPrecision(18, 4);
         builder.Property(f => f.RealizedProfit).HasPrecision(18, 4);
         builder.HasIndex(f => f.Time);
+    }
+}
+
+internal sealed class ExecutionSettingsConfiguration : IEntityTypeConfiguration<Domain.Execution.ExecutionSettings>
+{
+    public void Configure(EntityTypeBuilder<Domain.Execution.ExecutionSettings> builder)
+    {
+        builder.ToTable("ExecutionSettings");
+        builder.HasKey(s => s.Id);
+        builder.Property(s => s.Id).ValueGeneratedNever();
+        builder.Property(s => s.Mode).HasConversion<string>().HasMaxLength(10);
+        builder.Property(s => s.ChangedBy).HasMaxLength(100);
     }
 }

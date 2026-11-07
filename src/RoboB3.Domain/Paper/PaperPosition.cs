@@ -1,4 +1,5 @@
 using RoboB3.Domain.Common;
+using RoboB3.Domain.Execution;
 using RoboB3.Domain.Learning;
 using RoboB3.Domain.Strategies;
 
@@ -29,7 +30,9 @@ public sealed class PaperPosition
         decimal entryCost,
         FeatureVector? features,
         double? probability,
-        DateTimeOffset entryTime)
+        DateTimeOffset entryTime,
+        ExecutionMode mode = ExecutionMode.Paper,
+        long? brokerTicket = null)
     {
         if (direction == PositionDirection.Flat)
         {
@@ -53,11 +56,18 @@ public sealed class PaperPosition
         EntryTime = entryTime;
         MarkPrice = entryPrice;
         MarkTime = entryTime;
+        Mode = mode;
+        BrokerTicket = brokerTicket;
     }
 
     public Guid Id { get; private set; }
 
     public Guid? AssignmentId { get; private set; }
+
+    public ExecutionMode Mode { get; private set; } = ExecutionMode.Paper;
+
+    /// <summary>Ticket da posição no MetaTrader 5 (modos com corretora).</summary>
+    public long? BrokerTicket { get; private set; }
 
     /// <summary>Ativo no cadastro (ex.: WIN).</summary>
     public string Symbol { get; private set; }

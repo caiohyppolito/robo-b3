@@ -92,6 +92,59 @@ O worker também grava barras intradiárias (M5 de WIN/WDO e os tempos gráficos
 
 > **Contratos futuros:** o robô usa o contrato vigente (WIN → WINZ26). Perto do vencimento, a liquidez migra para o próximo contrato antes da troca automática; em day trade isso não deixa posição aberta, mas preste atenção nos últimos dias antes do vencimento.
 
+## Execução no MetaTrader 5 (demo e conta real)
+
+O robô tem três **modos de execução**, escolhidos na aba Operação:
+
+| Modo | Para onde vão as ordens |
+|---|---|
+| Simulado (padrão) | Para lugar nenhum: execução interna com preços reais |
+| MT5 conta demo | Para o MetaTrader 5, numa conta de demonstração |
+| MT5 CONTA REAL | Para a sua conta real. Dinheiro de verdade |
+
+**Travas, todas independentes:**
+
+- **Configuração da API e dos workers:** `Execution:AllowMt5` libera os modos MT5; `Execution:AllowRealAccount` libera a conta real. Os dois nascem desligados.
+- **Conector:** `ROBOB3_ORDERS=demo` ou `real`. Desligado, o conector recusa qualquer ordem. Ele também confere o tipo da conta logada antes de **cada** ordem e impõe um teto por ordem (`ROBOB3_MAX_CONTRACTS`, `ROBOB3_MAX_SHARES`).
+- **Troca de modo:** só com o robô travado e sem posições abertas. A conta real exige digitar `OPERAR CONTA REAL`. Toda troca fica na auditoria.
+- **A cada ciclo:**
+  - se a conta logada no MT5 não for do tipo do modo, o robô trava;
+  - o robô **concilia** as posições dele com as da corretora: posição encerrada lá (ex.: stop executado pela corretora) é encerrada no livro ao preço real; posição do robô na corretora sem registro interno, ou com volume diferente, **trava o robô**.
+- **Stop na corretora:** cada entrada sai com o stop registrado na corretora, e o stop móvel é atualizado lá. Se o PC desligar, a posição continua protegida.
+- **Falha ao encerrar:** se a corretora não executar uma saída, o robô trava (sem novas entradas), mantém a posição e tenta sair de novo no ciclo seguinte.
+- **Sem repetição automática de ordens:** cada ordem tem um identificador único, e o conector ignora repetições do mesmo identificador.
+- **Uma posição por contrato:** como a corretora soma posições do mesmo ativo, duas estratégias não abrem posição no mesmo contrato ao mesmo tempo.
+
+### Como ligar a conta demo
+
+1. No MT5, ligue o botão **Algo Trading** (barra de ferramentas) e marque *Ferramentas > Opções > Expert Advisors > Permitir negociação algorítmica*. Sem isso o MT5 recusa ordens vindas do conector.
+2. Inicie o conector com as ordens de demo ligadas:
+
+```powershell
+$env:ROBOB3_ORDERS = "demo"
+.venv\Scripts\python -m gateway
+```
+
+3. Habilite os modos MT5 na API e nos workers:
+
+```powershell
+dotnet user-secrets set "Execution:AllowMt5" "true" --project src/RoboB3.Api
+dotnet user-secrets set "Execution:AllowMt5" "true" --project src/RoboB3.Workers
+```
+
+4. Reinicie a API e os workers. No painel, trave o robô, encerre as posições do modo simulado e, na aba **Operação**, mude para **MT5 conta demo**.
+5. Libere o robô. Confira no MT5 cada ordem que aparecer (comentário `robo-b3`).
+
+### Conta real
+
+Só depois de semanas na conta demo sem divergências:
+- `ROBOB3_ORDERS=real` no conector;
+- `Execution:AllowRealAccount=true` na API e nos workers;
+- conta real logada no MT5;
+- a frase de confirmação no painel.
+
+Comece com o mínimo: limites de risco apertados, 1 contrato e poucas alocações.
+
 ## IA que aprende com os erros
 
 Na aba **IA** do painel, cada estratégia pode ganhar um **filtro de sinais** treinado com machine learning (ML.NET, árvores com boosting).
@@ -182,6 +235,7 @@ dotnet test
 - Senha com PBKDF2-SHA256 (600 mil iterações) e comparação em tempo constante.
 - Segredos via `user-secrets` ou variáveis de ambiente, nunca em `appsettings.json` ou no Git.
 - O login da corretora **nunca** passa pelo robô: você entra no MetaTrader 5, e o robô só conversa com o terminal já logado.
+- Envio de ordens desligado por padrão, em três lugares independentes: configuração da API, conector e modo de execução. Detalhes em [Execução no MetaTrader 5](#execução-no-metatrader-5-demo-e-conta-real).
 - Auditoria de login, kill switch e alteração de limites.
 - Dependabot e `npm audit` no CI.
 
@@ -191,4 +245,4 @@ dotnet test
 - [x] **Fase 2, estratégias e backtest:** indicadores, quatro estratégias, backtest com custos, IR e CDI, comparação com validação fora da amostra e painel com curva de patrimônio
 - [x] **Fase 3, IA:** contexto de mercado por sinal, filtro de sinais com ML.NET, validação fora da amostra, promoção e aposentadoria automáticas, diário de operações, importância das variáveis e análise do Claude
 - [x] **Fase 4, paper trading:** conector só de leitura do MT5, conta simulada com preços reais, alocações de estratégias, day trade, diário da IA e backtest intradiário
-- [ ] **Fase 5, conta real:** envio de ordens ao MT5 com dupla confirmação, começando com tamanho mínimo e todas as travas ligadas
+- [x] **Fase 5, execução no MT5:** modos simulado, demo e real com travas independentes, stop na corretora, conciliação a cada ciclo e auditoria de ordens

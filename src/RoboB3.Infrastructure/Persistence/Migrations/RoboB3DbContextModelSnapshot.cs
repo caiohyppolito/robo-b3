@@ -192,6 +192,29 @@ namespace RoboB3.Infrastructure.Persistence.Migrations
                     b.ToTable("BacktestRuns", "robo");
                 });
 
+            modelBuilder.Entity("RoboB3.Domain.Execution.ExecutionSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("ChangedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ChangedBy")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Mode")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ExecutionSettings", "robo");
+                });
+
             modelBuilder.Entity("RoboB3.Domain.Learning.MetaModel", b =>
                 {
                     b.Property<Guid>("Id")
@@ -486,6 +509,13 @@ namespace RoboB3.Infrastructure.Persistence.Migrations
                         .HasPrecision(18, 4)
                         .HasColumnType("decimal(18,4)");
 
+                    b.Property<string>("Mode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)")
+                        .HasDefaultValue("Paper");
+
                     b.Property<Guid>("PositionId")
                         .HasColumnType("uniqueidentifier");
 
@@ -536,6 +566,9 @@ namespace RoboB3.Infrastructure.Persistence.Migrations
                     b.Property<int>("BarsHeld")
                         .HasColumnType("int");
 
+                    b.Property<long?>("BrokerTicket")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("ContractSymbol")
                         .IsRequired()
                         .HasMaxLength(30)
@@ -571,6 +604,13 @@ namespace RoboB3.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("MarkTime")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<string>("Mode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)")
+                        .HasDefaultValue("Paper");
+
                     b.Property<decimal>("Multiplier")
                         .HasPrecision(18, 6)
                         .HasColumnType("decimal(18,6)");
@@ -596,6 +636,8 @@ namespace RoboB3.Infrastructure.Persistence.Migrations
                         .HasColumnType("nvarchar(20)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Mode");
 
                     b.ToTable("PaperPositions", "robo");
                 });

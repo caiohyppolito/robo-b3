@@ -1,6 +1,8 @@
 using RoboB3.Api.Infrastructure;
 using RoboB3.Application.Abstractions;
+using RoboB3.Application.Execution;
 using RoboB3.Application.Paper;
+using RoboB3.Domain.Execution;
 using RoboB3.Domain.MarketData;
 using RoboB3.Domain.Paper;
 
@@ -46,10 +48,12 @@ public sealed record PaperPositionDto(
     DateTimeOffset MarkTime,
     decimal UnrealizedProfit,
     double? Probability,
-    DateTimeOffset EntryTime)
+    DateTimeOffset EntryTime,
+    long? BrokerTicket)
 {
     public static PaperPositionDto From(PaperPosition p) => new(p.Id, p.AssignmentId, p.Symbol, p.ContractSymbol, p.StrategyKey,
-        p.Direction.ToString(), p.Quantity, p.EntryPrice, p.Stop, p.MarkPrice, p.MarkTime, Math.Round(p.UnrealizedProfit, 2), p.Probability, p.EntryTime);
+        p.Direction.ToString(), p.Quantity, p.EntryPrice, p.Stop, p.MarkPrice, p.MarkTime, Math.Round(p.UnrealizedProfit, 2), p.Probability, p.EntryTime,
+        p.BrokerTicket);
 }
 
 public sealed record PaperFillDto(DateTimeOffset Time, string Symbol, string Side, int Quantity, decimal Price, decimal Cost, decimal? RealizedProfit, string Reason)
@@ -58,6 +62,7 @@ public sealed record PaperFillDto(DateTimeOffset Time, string Symbol, string Sid
 }
 
 public sealed record PaperAccountDto(
+    ExecutionMode Mode,
     decimal InitialCapital,
     decimal Equity,
     decimal Cash,
@@ -69,6 +74,8 @@ public sealed record PaperAccountDto(
     IReadOnlyList<PaperPositionDto> Positions,
     IReadOnlyList<PaperFillDto> Fills);
 
+public sealed record ChangeModeDto(ExecutionMode Mode, string? Confirmation);
+
 internal static class PaperEndpoints
 {
     public static IEndpointRouteBuilder MapPaperEndpoints(this IEndpointRouteBuilder app)
@@ -77,14 +84,20 @@ internal static class PaperEndpoints
 
         var group = app.MapGroup("/api/paper").WithTags("Operação");
 
-        group.MapGet("/account", async (IPaperRepository paper, Microsoft.Extensions.Options.IOptions<TradingCapitalOptions> capital, CancellationToken ct) =>
+        group.MapGet("/account", async (
+            IPaperRepository paper,
+            IExecutionSettingsRepository execution,
+            Microsoft.Extensions.Options.IOptions<TradingCapitalOptions> capital,
+            CancellationToken ct) =>
         {
-            var account = await paper.GetAccountAsync(ct);
-            var positions = await paper.ListPositionsAsync(ct);
-            var fills = await paper.ListRecentFillsAsync(50, ct);
+            var mode = (await execution.GetAsync(ct)).Mode;
+            var account = await paper.GetAccountAsync(mode, ct);
+            var positions = await paper.ListPositionsAsync(mode, ct);
+            var fills = await paper.ListRecentFillsAsync(mode, 50, ct);
             var initial = account?.InitialCapital ?? capital.Value.InitialCapital;
             var equity = account?.Equity(positions) ?? initial;
             return new PaperAccountDto(
+                mode,
                 initial,
                 Math.Round(equity, 2),
                 Math.Round(account?.Cash ?? initial, 2),
@@ -110,6 +123,11 @@ internal static class PaperEndpoints
             await service.ResetAsync(http.Actor(), ct);
             return Results.NoContent();
         });
+
+        app.MapGet("/api/execution", (ExecutionService service, CancellationToken ct) => service.GetAsync(ct)).WithTags("Operação");
+
+        app.MapPut("/api/execution", async (ChangeModeDto dto, HttpContext http, ExecutionService service, CancellationToken ct) =>
+            await service.ChangeModeAsync(dto.Mode, dto.Confirmation, http.Actor(), ct)).WithTags("Operação");
 
         var assignments = group.MapGroup("/assignments");
 

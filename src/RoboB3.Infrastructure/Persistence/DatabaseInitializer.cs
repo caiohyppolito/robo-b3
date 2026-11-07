@@ -58,6 +58,11 @@ public sealed partial class DatabaseInitializer(
             db.TradingStates.Add(TradingState.CreateHalted(now));
         }
 
+        if (!await db.ExecutionSettings.AnyAsync(cancellationToken))
+        {
+            db.ExecutionSettings.Add(new Domain.Execution.ExecutionSettings(now));
+        }
+
         await db.SaveChangesAsync(cancellationToken);
         LogSeeded(missing.Count);
     }

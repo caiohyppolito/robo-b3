@@ -16,6 +16,11 @@ class Settings:
     server_utc_offset_hours: int = -3
     # Séries contínuas de futuros, em ordem de preferência ({root} vira WIN, WDO...).
     continuous_patterns: tuple[str, ...] = field(default=("{root}$N", "{root}$"))
+    # Envio de ordens: "off" (padrão), "demo" (só conta demo) ou "real" (só conta real).
+    orders: str = "off"
+    # Teto por ordem, independente do robô.
+    max_contracts: int = 2
+    max_shares: int = 1000
 
     @staticmethod
     def from_env() -> "Settings":
@@ -27,6 +32,10 @@ class Settings:
         if host not in ("127.0.0.1", "localhost", "::1"):
             raise SystemExit("Por segurança, o conector só escuta em localhost.")
 
+        orders = os.environ.get("ROBOB3_ORDERS", "off").strip().lower()
+        if orders not in ("off", "demo", "real"):
+            raise SystemExit("ROBOB3_ORDERS deve ser off, demo ou real.")
+
         patterns = os.environ.get("ROBOB3_CONTINUOUS_PATTERNS")
         return Settings(
             token=token,
@@ -35,4 +44,7 @@ class Settings:
             fake=os.environ.get("ROBOB3_GATEWAY_FAKE", "").lower() in ("1", "true", "sim"),
             server_utc_offset_hours=int(os.environ.get("ROBOB3_SERVER_UTC_OFFSET", "-3")),
             continuous_patterns=tuple(p.strip() for p in patterns.split(",")) if patterns else ("{root}$N", "{root}$"),
+            orders=orders,
+            max_contracts=int(os.environ.get("ROBOB3_MAX_CONTRACTS", "2")),
+            max_shares=int(os.environ.get("ROBOB3_MAX_SHARES", "1000")),
         )

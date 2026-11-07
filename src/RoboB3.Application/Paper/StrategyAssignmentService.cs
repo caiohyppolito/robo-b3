@@ -73,9 +73,14 @@ public sealed class StrategyAssignmentService(
     public async Task DeleteAsync(Guid id, string actor, CancellationToken cancellationToken)
     {
         var assignment = await GetAsync(id, cancellationToken);
-        if ((await paper.ListPositionsAsync(cancellationToken)).Any(p => p.AssignmentId == id))
+        foreach (var mode in Enum.GetValues<Domain.Execution.ExecutionMode>())
         {
-            throw new DomainException("Encerre a posição desta alocação antes de removê-la.");
+            if ((await paper.ListPositionsAsync(mode, cancellationToken)).All(p => p.AssignmentId != id))
+            {
+                continue;
+            }
+
+            throw new DomainException($"Encerre a posição desta alocação ({mode}) antes de removê-la.");
         }
 
         assignments.Remove(assignment);

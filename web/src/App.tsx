@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, session, setUnauthorizedHandler, type Status } from "./api";
+import { api, executionApi, MODE_LABEL, session, setUnauthorizedHandler, type ExecutionMode, type Status } from "./api";
 import { AssetsTable } from "./components/AssetsTable";
 import { AuditList } from "./components/AuditList";
 import { BacktestPage } from "./components/backtest/BacktestPage";
@@ -16,6 +16,7 @@ export function App() {
   const [status, setStatus] = useState<Status | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [mode, setMode] = useState<ExecutionMode | null>(null);
   const [page, setPage] = useState<"painel" | "operacao" | "backtest" | "ia">("painel");
 
   useEffect(() => setUnauthorizedHandler(() => setLoggedIn(false)), []);
@@ -23,6 +24,7 @@ export function App() {
   const refresh = useCallback(async () => {
     try {
       setStatus(await api.status());
+      setMode((await executionApi.get()).mode);
       setError(null);
       setRefreshKey((k) => k + 1);
     } catch (e) {
@@ -57,7 +59,7 @@ export function App() {
             IA
           </button>
         </nav>
-        <span className="badge">carteira simulada</span>
+        {mode && <span className={`badge ${mode === "Mt5Real" ? "badge-danger" : ""}`}>{MODE_LABEL[mode]}</span>}
         <button
           className="link"
           onClick={() => {
