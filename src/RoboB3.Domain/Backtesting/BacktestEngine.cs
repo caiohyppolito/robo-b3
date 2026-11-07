@@ -101,51 +101,75 @@ public sealed class BacktestEngine
         var startClose = _bars[first].Close;
         var riskFreeDaily = Math.Pow(1d + ((double)_settings.RiskFreeRatePercent / 100d), 1d / PerformanceMetrics.TradingDaysPerYear);
         var dailyInterest = (decimal)riskFreeDaily - 1m;
-        var previousEquity = _settings.InitialCapital;
+        var dayStartEquity = _settings.InitialCapital;
+        var lastEquity = _settings.InitialCapital;
+        var tradingDay = 0;
+        var totalBars = 0;
         _currentMonth = MonthKey(_bars[first].Date);
 
         for (var i = first; i < _bars.Count; i++)
         {
             var bar = _bars[i];
+            var isNewDay = i > first && bar.Date != _bars[i - 1].Date;
+
+            if (isNewDay)
+            {
+                // Juros, CDI e limite de perda diária andam por pregão, não por barra (vale para barras intradiárias).
+                tradingDay++;
+                dayStartEquity = lastEquity;
+                EarnInterest(dailyInterest);
+                PayTaxesOnMonthChange(bar.Date);
+            }
 
             if (i > first)
             {
-                EarnInterest(dailyInterest);
-                PayTaxesOnMonthChange(bar.Date);
                 ExecutePending(bar);
                 CheckStop(bar);
             }
 
+            var isLastBar = i == _bars.Count - 1;
+            var isLastBarOfDay = isLastBar || _bars[i + 1].Date != bar.Date;
+            if (_settings.FlattenAtDayEnd && isLastBarOfDay && _position is not null && !isLastBar)
+            {
+                ClosePosition(bar.Close, bar, "fim do pregão");
+            }
+
+            totalBars++;
             if (_position is not null)
             {
                 _barsInPosition++;
             }
 
             var equity = MarkToMarket(bar.Close);
+            lastEquity = equity;
             _peakEquity = Math.Max(_peakEquity, equity);
-            var day = i - first;
-            _equity.Add(new EquityPoint(
+            RecordEquity(new EquityPoint(
                 bar.Date,
                 Math.Round(equity, 2),
                 Math.Round(_settings.InitialCapital * bar.Close / startClose, 2),
-                Math.Round(_settings.InitialCapital * (decimal)Math.Pow(riskFreeDaily, day), 2)));
+                Math.Round(_settings.InitialCapital * (decimal)Math.Pow(riskFreeDaily, tradingDay), 2)));
 
-            var isLastBar = i == _bars.Count - 1;
             if (isLastBar)
             {
                 break;
             }
 
-            var entriesBlocked = _killSwitch | CheckRiskLimits(bar, equity, previousEquity);
-            previousEquity = equity;
+            var entriesBlocked = _killSwitch | CheckRiskLimits(bar, equity, dayStartEquity);
+
+            // Em day trade, a última barra do pregão não gera entrada para o dia seguinte.
+            if (_settings.FlattenAtDayEnd && isLastBarOfDay)
+            {
+                _pending = null;
+                continue;
+            }
+
             EvaluateStrategy(i, allowNewRisk: !entriesBlocked);
         }
 
         var lastBar = _bars[^1];
         if (_position is not null)
         {
-            ClosePosition(lastBar.Close, lastBar.Date, "fim do período");
-            _equity[^1] = _equity[^1] with { Equity = Math.Round(_cash, 2) };
+            ClosePosition(lastBar.Close, lastBar, "fim do período");
         }
 
         PayTaxes(_taxes.CloseMonth(_monthTrades) + _taxes.Flush(), lastBar.Date);
@@ -153,9 +177,22 @@ public sealed class BacktestEngine
         _equity[^1] = _equity[^1] with { Equity = Math.Round(_cash, 2) };
 
         var metrics = PerformanceMetrics.Calculate(
-            _equity, _trades, _barsInPosition, _costsPaid, _taxesPaid, _interestEarned, _settings.RiskFreeRatePercent)
+            _equity, _trades, _barsInPosition, totalBars, _costsPaid, _taxesPaid, _interestEarned, _settings.RiskFreeRatePercent)
             with { SignalsFiltered = _signalsFiltered };
         return new BacktestResult(_instrument.Symbol, _strategy.Key, _parameters, _trades, _equity, _events, metrics);
+    }
+
+    /// <summary>Um ponto por pregão: em barras intradiárias, o último ponto do dia substitui os anteriores.</summary>
+    private void RecordEquity(EquityPoint point)
+    {
+        if (_equity.Count > 0 && _equity[^1].Date == point.Date)
+        {
+            _equity[^1] = point;
+        }
+        else
+        {
+            _equity.Add(point);
+        }
     }
 
     /// <summary>
@@ -290,7 +327,7 @@ public sealed class BacktestEngine
 
         if (_position is not null && _position.Direction != order.Target)
         {
-            ClosePosition(bar.Open, bar.Date, "sinal");
+            ClosePosition(bar.Open, bar, "sinal");
         }
 
         if (order.Target != PositionDirection.Flat && _position is null)
@@ -304,7 +341,7 @@ public sealed class BacktestEngine
         var isBuy = order.Target == PositionDirection.Long;
         var price = _settings.Costs.Fill(bar.Open, isBuy);
         var equity = _cash;
-        var quantity = Size(price, order.StopDistance, equity);
+        var quantity = PositionSizer.Size(price, order.StopDistance, equity, _settings.RiskPerTradePercent, _instrument, _settings.Limits);
         if (quantity <= 0)
         {
             _events.Add(new BacktestEvent(bar.Date, "Entrada ignorada: tamanho calculado menor que um lote."));
@@ -328,38 +365,10 @@ public sealed class BacktestEngine
         decimal? stop = order.StopDistance is { } distance ? price - ((int)order.Target * distance) : null;
         _position = new Position(order.Target, bar.Date, price, quantity, stop, cost)
         {
+            EntryTime = bar.Time,
             Features = order.Features,
             Probability = order.Probability,
         };
-    }
-
-    private int Size(decimal price, decimal? stopDistance, decimal equity)
-    {
-        var unitValue = price * _instrument.Multiplier;
-        var limits = _settings.Limits;
-
-        int quantity;
-        if (stopDistance is > 0)
-        {
-            var riskBudget = equity * _settings.RiskPerTradePercent / 100m;
-            quantity = (int)Math.Floor(riskBudget / (stopDistance.Value * _instrument.Multiplier));
-        }
-        else
-        {
-            quantity = int.MaxValue;
-        }
-
-        if (_instrument.IsFuture)
-        {
-            quantity = Math.Min(quantity, limits.MaxFuturesContracts);
-        }
-        else
-        {
-            var maxByExposure = (int)Math.Floor(equity * limits.MaxPositionPercentPerAsset / 100m / unitValue);
-            quantity = Math.Min(quantity, maxByExposure);
-        }
-
-        return quantity / _instrument.LotSize * _instrument.LotSize;
     }
 
     private void CheckStop(Bar bar)
@@ -372,16 +381,17 @@ public sealed class BacktestEngine
         if (_position.Direction == PositionDirection.Long && bar.Low <= stop)
         {
             // Se abriu abaixo do stop (gap), a execução é na abertura.
-            ClosePosition(Math.Min(bar.Open, stop), bar.Date, "stop");
+            ClosePosition(Math.Min(bar.Open, stop), bar, "stop");
         }
         else if (_position.Direction == PositionDirection.Short && bar.High >= stop)
         {
-            ClosePosition(Math.Max(bar.Open, stop), bar.Date, "stop");
+            ClosePosition(Math.Max(bar.Open, stop), bar, "stop");
         }
     }
 
-    private void ClosePosition(decimal rawPrice, DateOnly date, string reason)
+    private void ClosePosition(decimal rawPrice, Bar bar, string reason)
     {
+        var date = bar.Date;
         var position = _position!;
         _position = null;
 
@@ -409,7 +419,9 @@ public sealed class BacktestEngine
             invested == 0 ? 0 : Math.Round(net / invested * 100m, 2),
             reason,
             position.Features?.Values,
-            position.Probability));
+            position.Probability,
+            position.EntryTime,
+            bar.Time));
 
         var saleAmount = (position.Direction == PositionDirection.Long ? price : position.EntryPrice) * position.Quantity * _instrument.Multiplier;
         _monthTrades.Add(new RealizedTrade(date, Categorize(position.EntryDate, date), net, saleAmount));
@@ -475,6 +487,8 @@ public sealed class BacktestEngine
         public decimal EntryCost { get; } = entryCost;
 
         public int BarsHeld { get; set; }
+
+        public DateTimeOffset? EntryTime { get; init; }
 
         public FeatureVector? Features { get; init; }
 

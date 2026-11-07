@@ -15,7 +15,9 @@ public sealed record BacktestRequest(
     DateOnly? From,
     DateOnly? To,
     SimulationSettings Settings,
-    bool UseMetaModel = false);
+    bool UseMetaModel = false,
+    Domain.MarketData.Timeframe Timeframe = Domain.MarketData.Timeframe.D1,
+    bool FlattenAtDayEnd = false);
 
 public sealed record ComparisonRequest(
     IReadOnlyList<string>? Symbols,

@@ -3,6 +3,7 @@ using RoboB3.Application.Abstractions;
 using RoboB3.Domain.Audit;
 using RoboB3.Domain.Backtesting;
 using RoboB3.Domain.Learning;
+using RoboB3.Domain.Paper;
 using RoboB3.Domain.MarketData;
 using RoboB3.Domain.Risk;
 
@@ -25,6 +26,14 @@ public sealed class RoboB3DbContext(DbContextOptions<RoboB3DbContext> options) :
     public DbSet<MetaModel> MetaModels => Set<MetaModel>();
 
     public DbSet<TradeJournalEntry> TradeJournal => Set<TradeJournalEntry>();
+
+    public DbSet<StrategyAssignment> StrategyAssignments => Set<StrategyAssignment>();
+
+    public DbSet<PaperAccount> PaperAccounts => Set<PaperAccount>();
+
+    public DbSet<PaperPosition> PaperPositions => Set<PaperPosition>();
+
+    public DbSet<PaperFill> PaperFills => Set<PaperFill>();
 
     Task IUnitOfWork.SaveChangesAsync(CancellationToken cancellationToken) => SaveChangesAsync(cancellationToken);
 

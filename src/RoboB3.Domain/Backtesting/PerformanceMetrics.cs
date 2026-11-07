@@ -24,10 +24,12 @@ public sealed record PerformanceMetrics(
     public const int TradingDaysPerYear = 252;
     private const decimal MaxProfitFactor = 999m;
 
+    /// <param name="equity">Um ponto por pregão (o motor já reamostra barras intradiárias), para o Sharpe ser comparável.</param>
     public static PerformanceMetrics Calculate(
         IReadOnlyList<EquityPoint> equity,
         IReadOnlyList<BacktestTrade> trades,
         int barsInPosition,
+        int totalBars,
         decimal costsPaid,
         decimal taxesPaid,
         decimal interestEarned,
@@ -73,7 +75,7 @@ public sealed record PerformanceMetrics(
             WinRatePercent: trades.Count == 0 ? 0 : Pct((decimal)trades.Count(t => t.NetProfit > 0) / trades.Count),
             ProfitFactor: Math.Round(profitFactor, 2),
             AverageTradePercent: trades.Count == 0 ? 0 : Math.Round(trades.Average(t => t.ReturnPercent), 2),
-            ExposurePercent: Pct((decimal)barsInPosition / equity.Count),
+            ExposurePercent: totalBars == 0 ? 0 : Pct((decimal)barsInPosition / totalBars),
             CostsPaid: Math.Round(costsPaid, 2),
             TaxesPaid: Math.Round(taxesPaid, 2),
             InterestEarned: Math.Round(interestEarned, 2),

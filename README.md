@@ -67,6 +67,31 @@ Na aba **Backtest** do painel:
 
 > Backtest bom não garante lucro futuro. Desconfie de resultados que só aparecem dentro da amostra.
 
+## Operação simulada (paper trading) com o MetaTrader 5
+
+Na aba **Operação**, você escolhe quais estratégias operam quais ativos ("alocações"), em qual tempo gráfico, se é day trade e se usa o filtro da IA. O robô:
+
+1. lê cotações e barras **reais** do MetaTrader 5 da Clear, por um conector local só de leitura ([`mt5-gateway/`](mt5-gateway/README.md));
+2. avalia cada alocação **só quando fecha uma barra nova**, com a mesma estratégia, o mesmo contexto da IA e o mesmo `RiskManager` do backtest;
+3. executa as ordens **numa conta simulada interna**, comprando no ask e vendendo no bid, com slippage e custos;
+4. faz stop, stop móvel e encerramento de day trade (17h50 por padrão);
+5. registra cada operação encerrada no **diário da IA**, que pesa o dobro no próximo treino.
+
+**Nada é enviado à corretora nesta fase.** O conector não tem rotas de ordem.
+
+Travas da operação simulada:
+- toda alocação nasce **desligada**;
+- com o robô travado, ou com a perda do dia ou o drawdown estourados, nenhuma entrada nova acontece, mas saídas e stops continuam funcionando;
+- entradas só entre 10h05 e 17h30;
+- cotação com mais de 2 minutos é tratada como mercado fechado;
+- o monitor de risco vigia o patrimônio **real da conta simulada**, marcado a mercado.
+
+Os horários e o risco por operação ficam na seção `PaperTrading` do `appsettings.json`.
+
+O worker também grava barras intradiárias (M5 de WIN/WDO e os tempos gráficos das alocações), o que permite **backtest de day trade**: escolha um tempo gráfico intradiário na aba Backtest e marque "zerar na última barra de cada pregão".
+
+> **Contratos futuros:** o robô usa o contrato vigente (WIN → WINZ26). Perto do vencimento, a liquidez migra para o próximo contrato antes da troca automática; em day trade isso não deixa posição aberta, mas preste atenção nos últimos dias antes do vencimento.
+
 ## IA que aprende com os erros
 
 Na aba **IA** do painel, cada estratégia pode ganhar um **filtro de sinais** treinado com machine learning (ML.NET, árvores com boosting).
@@ -125,12 +150,13 @@ dotnet user-secrets set "ConnectionStrings:RoboB3" "Server=localhost,1433;Databa
 dotnet user-secrets set "ConnectionStrings:RoboB3" "Server=localhost,1433;Database=RoboB3;User Id=sa;Password=SUA_SENHA;TrustServerCertificate=True" --project src/RoboB3.Workers
 ```
 
-### 3. Subir tudo (três terminais)
+### 3. Subir tudo (quatro terminais)
 
 ```powershell
 dotnet run --project src/RoboB3.Api        # API em http://localhost:5080 (cria o banco na primeira execução)
-dotnet run --project src/RoboB3.Workers    # coleta de dados e monitor de risco
+dotnet run --project src/RoboB3.Workers    # dados, risco, IA e operação simulada
 cd web; npm install; npm run dev           # painel em http://localhost:5173
+cd mt5-gateway; .venv\Scripts\python -m gateway   # conector do MT5 (veja mt5-gateway/README.md)
 ```
 
 Usuário padrão do painel: `admin`, com a senha definida no passo 2.
@@ -164,5 +190,5 @@ dotnet test
 - [x] **Fase 1, fundação:** solution, banco, API, workers, painel, gestão de risco, kill switch e CI
 - [x] **Fase 2, estratégias e backtest:** indicadores, quatro estratégias, backtest com custos, IR e CDI, comparação com validação fora da amostra e painel com curva de patrimônio
 - [x] **Fase 3, IA:** contexto de mercado por sinal, filtro de sinais com ML.NET, validação fora da amostra, promoção e aposentadoria automáticas, diário de operações, importância das variáveis e análise do Claude
-- [ ] **Fase 4, paper trading:** integração com o MetaTrader 5 da Clear (conta demo), dados intradiários de WIN/WDO e carteira simulada
-- [ ] **Fase 5, conta real:** começando com tamanho mínimo e todas as travas ligadas
+- [x] **Fase 4, paper trading:** conector só de leitura do MT5, conta simulada com preços reais, alocações de estratégias, day trade, diário da IA e backtest intradiário
+- [ ] **Fase 5, conta real:** envio de ordens ao MT5 com dupla confirmação, começando com tamanho mínimo e todas as travas ligadas

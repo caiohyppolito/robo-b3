@@ -7,7 +7,9 @@
 - Testes com SQL Server real: definir `ROBOB3_TEST_SQLSERVER` (sem ela são pulados). O provedor InMemory do EF não lê complex types.
 - Ordens que só reduzem posição nunca podem ser bloqueadas. O robô nunca se destrava sozinho.
 - A IA (`RoboB3.Domain/Learning`) só pode vetar entradas (`ISignalFilter`); nunca cria operações nem bloqueia saídas. Modelos só são promovidos com evidência fora da amostra (`PromotionPolicy`).
+- Paper trading (`RoboB3.Domain/Paper`, `PaperTradingService`) usa as mesmas regras do backtest (`PositionSizer`, `RiskManager`, estratégias) e decide só em barras fechadas. O conector `mt5-gateway/` (Python) é só leitura: não adicionar rotas de ordem fora da Fase 5.
+- Horários de pregão em Brasília via `B3Calendar`; candles diários são gravados à meia-noite UTC da data do pregão.
 - Mudou o modelo EF? Gere migração: `dotnet ef migrations add <Nome> --project src/RoboB3.Infrastructure --output-dir Persistence/Migrations`.
 - Nunca versionar segredos: usar `user-secrets` ou variáveis de ambiente.
 - Textos para o usuário, logs e nomes de testes em português; identificadores de código em inglês.
-- Verificar: `dotnet build && dotnet test` e `cd web && npm run build`.
+- Verificar: `dotnet build && dotnet test`, `cd web && npm run build` e `cd mt5-gateway && python -m pytest`.

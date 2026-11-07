@@ -43,7 +43,9 @@ public sealed record RunBacktestDto(
     DateOnly? From,
     DateOnly? To,
     SimulationDto? Simulation,
-    bool? UseMetaModel);
+    bool? UseMetaModel,
+    Domain.MarketData.Timeframe? Timeframe,
+    bool? FlattenAtDayEnd);
 
 public sealed record CompareDto(
     List<string>? Symbols,
@@ -98,7 +100,9 @@ internal static class BacktestEndpoints
                 dto.From,
                 dto.To,
                 (dto.Simulation ?? new SimulationDto(null, null, null, null, null)).ToSettings(),
-                dto.UseMetaModel ?? false);
+                dto.UseMetaModel ?? false,
+                dto.Timeframe ?? Domain.MarketData.Timeframe.D1,
+                dto.FlattenAtDayEnd ?? false);
             var run = await service.RunAsync(request, ct);
             return Results.Created($"/api/backtests/{run.Id}", BacktestDetailDto.From(run));
         });

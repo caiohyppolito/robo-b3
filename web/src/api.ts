@@ -89,7 +89,16 @@ export function setUnauthorizedHandler(handler: () => void) {
   onUnauthorized = handler;
 }
 
+async function requestNoContent(path: string, method: string): Promise<void> {
+  await send(path, { method });
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await send(path, init);
+  return (await response.json()) as T;
+}
+
+async function send(path: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
   if (init.body) headers.set("Content-Type", "application/json");
   const token = session.token;
@@ -110,7 +119,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     }
     throw new ApiError(message, response.status);
   }
-  return (await response.json()) as T;
+  return response;
 }
 
 export const api = {
@@ -271,6 +280,8 @@ export interface RunBacktestRequest {
   to?: string;
   simulation: Simulation;
   useMetaModel?: boolean;
+  timeframe?: Timeframe;
+  flattenAtDayEnd?: boolean;
 }
 
 export interface CompareRequest {
@@ -344,4 +355,101 @@ export const learningApi = {
     request<MetaModel>(`/api/learning/models/${encodeURIComponent(id)}/analysis`, { method: "POST" }),
   analyst: () => request<{ isConfigured: boolean }>("/api/learning/analyst"),
   journal: () => request<JournalEntry[]>("/api/learning/journal?count=50"),
+};
+
+// ---------- Operação simulada (Fase 4) ----------
+
+export type Timeframe = "M1" | "M5" | "M15" | "H1" | "D1";
+
+export interface FeedStatus {
+  connected: boolean;
+  mode: string;
+  server: string | null;
+  login: number | null;
+  isDemo: boolean | null;
+  company: string | null;
+  message: string | null;
+}
+
+export interface Assignment {
+  id: string;
+  symbol: string;
+  strategy: string;
+  parameters: Record<string, number>;
+  timeframe: Timeframe;
+  useMetaModel: boolean;
+  flattenAtDayEnd: boolean;
+  isEnabled: boolean;
+  lastProcessedBar: string | null;
+}
+
+export interface AssignmentRequest {
+  symbol: string;
+  strategy: string;
+  parameters: Record<string, number>;
+  timeframe: Timeframe;
+  useMetaModel: boolean;
+  flattenAtDayEnd: boolean;
+}
+
+export interface PaperPosition {
+  id: string;
+  assignmentId: string | null;
+  symbol: string;
+  contract: string;
+  strategy: string;
+  direction: "Long" | "Short";
+  quantity: number;
+  entryPrice: number;
+  stop: number | null;
+  markPrice: number;
+  markTime: string;
+  unrealizedProfit: number;
+  probability: number | null;
+  entryTime: string;
+}
+
+export interface PaperFill {
+  time: string;
+  symbol: string;
+  side: "Buy" | "Sell";
+  quantity: number;
+  price: number;
+  cost: number;
+  realizedProfit: number | null;
+  reason: string;
+}
+
+export interface PaperAccount {
+  initialCapital: number;
+  equity: number;
+  cash: number;
+  dayProfit: number;
+  totalProfit: number;
+  realizedProfit: number;
+  costsPaid: number;
+  peakEquity: number;
+  positions: PaperPosition[];
+  fills: PaperFill[];
+}
+
+export interface CycleReport {
+  feedConnected: boolean;
+  opened: number;
+  closed: number;
+  messages: string[];
+}
+
+export const paperApi = {
+  feed: () => request<FeedStatus>("/api/feed/status"),
+  account: () => request<PaperAccount>("/api/paper/account"),
+  cycle: () => request<CycleReport>("/api/paper/cycle", { method: "POST" }),
+  closePosition: (id: string) => requestNoContent(`/api/paper/positions/${encodeURIComponent(id)}/close`, "POST"),
+  reset: () => requestNoContent("/api/paper/reset", "POST"),
+  assignments: () => request<Assignment[]>("/api/paper/assignments"),
+  createAssignment: (body: AssignmentRequest) =>
+    request<Assignment>("/api/paper/assignments", { method: "POST", body: JSON.stringify(body) }),
+  setEnabled: (id: string, enabled: boolean) =>
+    request<Assignment>(`/api/paper/assignments/${encodeURIComponent(id)}/${enabled ? "enable" : "disable"}`, { method: "POST" }),
+  deleteAssignment: (id: string) => requestNoContent(`/api/paper/assignments/${encodeURIComponent(id)}`, "DELETE"),
 };

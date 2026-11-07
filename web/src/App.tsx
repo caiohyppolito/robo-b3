@@ -4,6 +4,7 @@ import { AssetsTable } from "./components/AssetsTable";
 import { AuditList } from "./components/AuditList";
 import { BacktestPage } from "./components/backtest/BacktestPage";
 import { LearningPage } from "./components/learning/LearningPage";
+import { OperationPage } from "./components/operation/OperationPage";
 import { Login } from "./components/Login";
 import { RiskLimitsForm } from "./components/RiskLimitsForm";
 import { StatusPanel } from "./components/StatusPanel";
@@ -15,7 +16,7 @@ export function App() {
   const [status, setStatus] = useState<Status | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [page, setPage] = useState<"painel" | "backtest" | "ia">("painel");
+  const [page, setPage] = useState<"painel" | "operacao" | "backtest" | "ia">("painel");
 
   useEffect(() => setUnauthorizedHandler(() => setLoggedIn(false)), []);
 
@@ -46,6 +47,9 @@ export function App() {
           <button className={page === "painel" ? "active" : ""} onClick={() => setPage("painel")}>
             Painel
           </button>
+          <button className={page === "operacao" ? "active" : ""} onClick={() => setPage("operacao")}>
+            Operação
+          </button>
           <button className={page === "backtest" ? "active" : ""} onClick={() => setPage("backtest")}>
             Backtest
           </button>
@@ -68,6 +72,10 @@ export function App() {
       {page === "backtest" ? (
         <main>
           <BacktestPage />
+        </main>
+      ) : page === "operacao" ? (
+        <main>
+          <OperationPage />
         </main>
       ) : page === "ia" ? (
         <main>

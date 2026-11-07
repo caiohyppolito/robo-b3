@@ -4,6 +4,8 @@ using Microsoft.Extensions.DependencyInjection;
 using RoboB3.Application.Abstractions;
 using RoboB3.Application.Backtesting;
 using RoboB3.Application.Learning;
+using RoboB3.Application.Paper;
+using RoboB3.Infrastructure.MarketData.Mt5;
 using RoboB3.Infrastructure.Learning;
 using RoboB3.Infrastructure.MarketData;
 using RoboB3.Infrastructure.Persistence;
@@ -42,11 +44,33 @@ public static class DependencyInjection
             .ValidateOnStart();
         services.AddScoped<DatabaseInitializer>();
 
-        services.AddOptions<TradingOptions>()
-            .Bind(configuration.GetSection(TradingOptions.SectionName))
+        services.AddOptions<TradingCapitalOptions>()
+            .Bind(configuration.GetSection(TradingCapitalOptions.SectionName))
             .ValidateDataAnnotations()
             .ValidateOnStart();
-        services.AddScoped<IPortfolioProvider, SimulatedPortfolioProvider>();
+        services.AddOptions<PaperTradingOptions>()
+            .Bind(configuration.GetSection(PaperTradingOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+        services.AddScoped<IPortfolioProvider, PaperPortfolioProvider>();
+        services.AddScoped<IPaperRepository, PaperRepository>();
+        services.AddScoped<IStrategyAssignmentRepository, StrategyAssignmentRepository>();
+
+        services.AddOptions<GatewayOptions>()
+            .Bind(configuration.GetSection(GatewayOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+        services.AddHttpClient<IMarketDataFeed, Mt5GatewayFeed>((sp, client) =>
+            {
+                var gateway = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<GatewayOptions>>().Value;
+                client.BaseAddress = gateway.BaseUrl;
+                client.Timeout = TimeSpan.FromSeconds(30);
+                if (!string.IsNullOrWhiteSpace(gateway.Token))
+                {
+                    client.DefaultRequestHeaders.Add(Mt5GatewayFeed.TokenHeader, gateway.Token);
+                }
+            })
+            .AddStandardResilienceHandler();
         services.AddOptions<BacktestOptions>()
             .Bind(configuration.GetSection(BacktestOptions.SectionName))
             .ValidateDataAnnotations()

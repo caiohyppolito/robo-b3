@@ -43,7 +43,7 @@ builder.Services.AddRateLimiter(options =>
 
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
-    policy.WithOrigins(allowedOrigins).AllowAnyHeader().WithMethods("GET", "POST", "PUT")));
+    policy.WithOrigins(allowedOrigins).AllowAnyHeader().WithMethods("GET", "POST", "PUT", "DELETE")));
 
 var app = builder.Build();
 
@@ -72,6 +72,7 @@ app.MapTradingEndpoints();
 app.MapMarketDataEndpoints();
 app.MapBacktestEndpoints();
 app.MapLearningEndpoints();
+app.MapPaperEndpoints();
 
 await app.RunAsync();
 return 0;

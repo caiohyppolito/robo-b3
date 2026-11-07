@@ -485,3 +485,7 @@ $RECYCLE.BIN/
 web/dist/
 *.local.json
 appsettings.*.local.json
+
+# Conector MT5 (Python)
+.venv/
+.pytest_cache/

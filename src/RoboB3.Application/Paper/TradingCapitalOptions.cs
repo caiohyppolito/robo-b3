@@ -1,12 +1,12 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace RoboB3.Infrastructure.Portfolio;
+namespace RoboB3.Application.Paper;
 
-public sealed class TradingOptions
+/// <summary>Capital da conta simulada (seção "Trading").</summary>
+public sealed class TradingCapitalOptions
 {
     public const string SectionName = "Trading";
 
-    /// <summary>Capital inicial da carteira simulada, em reais.</summary>
     [Range(1_000, 100_000_000)]
     public decimal InitialCapital { get; set; } = 100_000m;
 }

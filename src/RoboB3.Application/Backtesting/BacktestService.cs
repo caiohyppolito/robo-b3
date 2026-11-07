@@ -25,6 +25,9 @@ public sealed class BacktestService(
     /// <summary>Histórico extra antes do início, para aquecer indicadores longos (ex.: média de 200).</summary>
     public const int WarmupCalendarDays = 450;
 
+    /// <summary>Em barras intradiárias, 30 dias já trazem milhares de barras de aquecimento.</summary>
+    public const int IntradayWarmupCalendarDays = 30;
+
     public async Task<BacktestRun> RunAsync(BacktestRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -32,9 +35,14 @@ public sealed class BacktestService(
         var parameters = definition.Normalize(request.Parameters);
         var (from, to) = ResolvePeriod(request.From, request.To);
 
-        var (asset, bars) = await LoadBarsAsync(request.Symbol, from, to, cancellationToken);
+        if (request.FlattenAtDayEnd && request.Timeframe == Timeframe.D1)
+        {
+            throw new DomainException("Day trade precisa de barras intradiárias (M1, M5, M15 ou H1).");
+        }
+
+        var (asset, bars) = await LoadBarsAsync(request.Symbol, from, to, cancellationToken, request.Timeframe);
         var startIndex = FirstIndexOnOrAfter(bars, from);
-        var settings = await BuildSettingsAsync(request.Settings, cancellationToken);
+        var settings = await BuildSettingsAsync(request.Settings, cancellationToken, request.FlattenAtDayEnd);
 
         var (modelId, filter) = request.UseMetaModel ? await ActiveFilterAsync(definition.Key, cancellationToken) : (null, null);
         var result = BacktestEngine.Run(bars, definition.Create(parameters), parameters, InstrumentSpec.For(asset), settings, startIndex, filter);
@@ -60,23 +68,27 @@ public sealed class BacktestService(
         string symbol,
         DateOnly from,
         DateOnly to,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Timeframe timeframe = Timeframe.D1)
     {
         var asset = await assets.FindAsync(symbol, cancellationToken)
             ?? throw new DomainException($"Ativo '{symbol}' não encontrado.");
 
-        var start = new DateTimeOffset(from.AddDays(-WarmupCalendarDays).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+        var warmupDays = timeframe == Timeframe.D1 ? WarmupCalendarDays : IntradayWarmupCalendarDays;
+        var start = new DateTimeOffset(from.AddDays(-warmupDays).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
         var end = new DateTimeOffset(to.ToDateTime(TimeOnly.MaxValue), TimeSpan.Zero);
-        var data = await candles.ListAsync(asset.Symbol, Timeframe.D1, start, end, cancellationToken);
+        var data = await candles.ListAsync(asset.Symbol, timeframe, start, end, cancellationToken);
         if (data.Count == 0)
         {
-            throw new DomainException($"Sem candles diários de {asset.Symbol}. Aguarde a coleta de dados.");
+            throw new DomainException(timeframe == Timeframe.D1
+                ? $"Sem candles diários de {asset.Symbol}. Aguarde a coleta de dados."
+                : $"Sem barras {timeframe} de {asset.Symbol}. Elas vêm do MetaTrader 5: deixe o conector e os workers rodando.");
         }
 
         return (asset, Bar.FromCandles(data));
     }
 
-    internal async Task<BacktestSettings> BuildSettingsAsync(SimulationSettings simulation, CancellationToken cancellationToken)
+    internal async Task<BacktestSettings> BuildSettingsAsync(SimulationSettings simulation, CancellationToken cancellationToken, bool flattenAtDayEnd = false)
     {
         ArgumentNullException.ThrowIfNull(simulation);
         var current = (await riskSettings.GetAsync(cancellationToken)).Limits;
@@ -97,7 +109,8 @@ public sealed class BacktestService(
             limits,
             defaults.Costs(),
             simulation.RiskFreeRatePercent ?? defaults.RiskFreeRatePercent,
-            simulation.ApplyTaxes);
+            simulation.ApplyTaxes,
+            flattenAtDayEnd: flattenAtDayEnd);
     }
 
     internal (DateOnly From, DateOnly To) ResolvePeriod(DateOnly? from, DateOnly? to)

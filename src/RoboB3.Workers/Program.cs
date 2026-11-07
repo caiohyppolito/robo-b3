@@ -21,5 +21,7 @@ builder.Services.AddOptions<WorkerOptions>()
 builder.Services.AddHostedService<MarketDataWorker>();
 builder.Services.AddHostedService<RiskMonitorWorker>();
 builder.Services.AddHostedService<LearningWorker>();
+builder.Services.AddHostedService<PaperTradingWorker>();
+builder.Services.AddHostedService<IntradayDataWorker>();
 
 await builder.Build().RunAsync();

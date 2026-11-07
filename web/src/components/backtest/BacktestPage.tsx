@@ -9,6 +9,7 @@ import {
   type ComparisonResult,
   type Simulation,
   type StrategyDef,
+  type Timeframe,
 } from "../../api";
 import { formatDate, formatNumber, formatSignedPercent } from "../../format";
 import { ComparisonView } from "./ComparisonView";
@@ -39,12 +40,15 @@ export function BacktestPage() {
   });
 
   const [useMetaModel, setUseMetaModel] = useState(false);
+  const [timeframe, setTimeframe] = useState<Timeframe>("D1");
+  const [flattenAtDayEnd, setFlattenAtDayEnd] = useState(false);
   const [running, setRunning] = useState<"run" | "compare" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<BacktestDetail | null>(null);
   const [comparison, setComparison] = useState<ComparisonResult | null>(null);
 
-  const tradable = useMemo(() => assets.filter((a) => a.dailyDataSymbol && a.assetClass !== "Index"), [assets]);
+  // Futuros (WIN/WDO) só têm barras intradiárias, vindas do MT5.
+  const tradable = useMemo(() => assets.filter((a) => a.assetClass !== "Index"), [assets]);
   const strategy = strategies.find((s) => s.key === strategyKey);
 
   useEffect(() => {
@@ -68,7 +72,17 @@ export function BacktestPage() {
     setRunning("run");
     setError(null);
     try {
-      setResult(await backtestApi.run({ symbol, strategy: strategyKey, parameters: params, from, to, simulation, useMetaModel }));
+      setResult(await backtestApi.run({
+          symbol,
+          strategy: strategyKey,
+          parameters: params,
+          from,
+          to,
+          simulation,
+          useMetaModel,
+          timeframe,
+          flattenAtDayEnd: timeframe !== "D1" && flattenAtDayEnd,
+        }));
       setHistory(await backtestApi.list());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha no backtest");
@@ -134,6 +148,17 @@ export function BacktestPage() {
             {strategy && <span className="muted small">{strategy.description}</span>}
           </label>
           <label>
+            Tempo gráfico
+            <select value={timeframe} onChange={(e) => setTimeframe(e.target.value as Timeframe)}>
+              <option value="D1">Diário</option>
+              <option value="H1">1 hora</option>
+              <option value="M15">15 minutos</option>
+              <option value="M5">5 minutos</option>
+              <option value="M1">1 minuto</option>
+            </select>
+            {timeframe !== "D1" && <span className="muted small">Barras intradiárias vêm do MetaTrader 5.</span>}
+          </label>
+          <label>
             De
             <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} required />
           </label>
@@ -156,6 +181,12 @@ export function BacktestPage() {
           ))}
         </div>
 
+        {timeframe !== "D1" && (
+          <label className="checkbox">
+            <input type="checkbox" checked={flattenAtDayEnd} onChange={(e) => setFlattenAtDayEnd(e.target.checked)} />
+            Day trade: zerar na última barra de cada pregão
+          </label>
+        )}
         <label className="checkbox">
           <input type="checkbox" checked={useMetaModel} onChange={(e) => setUseMetaModel(e.target.checked)} />
           Usar o filtro da IA (modelo ativo da estratégia, se houver)

@@ -14,4 +14,10 @@ public sealed class WorkerOptions
 
     [Range(1, 168)]
     public int LearningIntervalHours { get; set; } = 24;
+
+    [Range(5, 3600)]
+    public int PaperTradingIntervalSeconds { get; set; } = 30;
+
+    [Range(1, 1440)]
+    public int IntradayDataIntervalMinutes { get; set; } = 5;
 }
