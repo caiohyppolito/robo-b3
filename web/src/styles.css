@@ -1,0 +1,88 @@
+:root {
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --border: #e2e5ea;
+  --text: #16191f;
+  --muted: #5f6673;
+  --primary: #1f5eff;
+  --danger: #d12c2c;
+  --success: #138a4b;
+  --warn: #c98a00;
+  color-scheme: light;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1115;
+    --surface: #171a21;
+    --border: #2a2f3a;
+    --text: #e8eaee;
+    --muted: #9aa1ad;
+    --primary: #5b8cff;
+    --danger: #ff5a5a;
+    --success: #3ccf7f;
+    --warn: #f0b43c;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); }
+h1, h2 { margin: 0; }
+h2 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin-bottom: 0.75rem; }
+
+.app { max-width: 1200px; margin: 0 auto; padding: 1rem; }
+header { display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
+header h1 { font-size: 1.4rem; }
+.badge { font-size: 0.75rem; padding: 0.2rem 0.6rem; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); color: var(--muted); }
+main { display: flex; flex-direction: column; gap: 1rem; }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
+.columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1rem; }
+
+.big { font-size: 1.8rem; font-weight: 700; margin: 0 0 0.25rem; font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.small { font-size: 0.8rem; }
+.block { display: block; }
+.center { text-align: center; }
+.error { color: var(--danger); }
+.success { color: var(--success); }
+.banner { background: var(--surface); border: 1px solid var(--danger); border-radius: 8px; padding: 0.5rem 1rem; }
+
+.state.halted { border-color: var(--danger); }
+.state.halted .big { color: var(--danger); }
+.state.running .big { color: var(--success); }
+
+button { font: inherit; padding: 0.55rem 1rem; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; margin-top: 0.5rem; }
+button:disabled { opacity: 0.6; cursor: wait; }
+button.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+button.danger { background: var(--danger); border-color: var(--danger); color: #fff; font-weight: 700; width: 100%; }
+button.link { margin: 0 0 0 auto; border: none; background: none; color: var(--primary); }
+
+label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.9rem; }
+input { font: inherit; padding: 0.5rem; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.9rem; margin-bottom: 0.5rem; }
+
+.meter { height: 8px; background: var(--bg); border-radius: 999px; overflow: hidden; margin: 0.5rem 0; }
+.fill { height: 100%; }
+.fill.low { background: var(--success); }
+.fill.mid { background: var(--warn); }
+.fill.high { background: var(--danger); }
+
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid var(--border); }
+th { color: var(--muted); font-weight: 500; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.up { color: var(--success); }
+.down { color: var(--danger); }
+
+.audit { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.6rem; font-size: 0.9rem; }
+.audit li { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: baseline; }
+code { font-size: 0.8rem; background: var(--bg); padding: 0.1rem 0.35rem; border-radius: 4px; }
+
+.login { min-height: 100vh; display: grid; place-items: center; padding: 1rem; }
+.login form { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 0.9rem; }
+.login h1 { font-size: 1.5rem; }

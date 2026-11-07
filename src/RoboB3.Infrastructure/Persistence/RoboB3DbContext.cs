@@ -1,0 +1,28 @@
+using Microsoft.EntityFrameworkCore;
+using RoboB3.Application.Abstractions;
+using RoboB3.Domain.Audit;
+using RoboB3.Domain.MarketData;
+using RoboB3.Domain.Risk;
+
+namespace RoboB3.Infrastructure.Persistence;
+
+public sealed class RoboB3DbContext(DbContextOptions<RoboB3DbContext> options) : DbContext(options), IUnitOfWork
+{
+    public DbSet<Asset> Assets => Set<Asset>();
+
+    public DbSet<Candle> Candles => Set<Candle>();
+
+    public DbSet<RiskSettings> RiskSettings => Set<RiskSettings>();
+
+    public DbSet<TradingState> TradingStates => Set<TradingState>();
+
+    public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
+
+    Task IUnitOfWork.SaveChangesAsync(CancellationToken cancellationToken) => SaveChangesAsync(cancellationToken);
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.HasDefaultSchema("robo");
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(RoboB3DbContext).Assembly);
+    }
+}
