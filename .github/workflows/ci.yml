@@ -11,6 +11,17 @@ permissions:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: Ci_Somente_Teste_123!
+        ports:
+          - 1433:1433
+    env:
+      # Banco descartável do CI, sem dados reais.
+      ROBOB3_TEST_SQLSERVER: Server=localhost,1433;User Id=sa;Password=Ci_Somente_Teste_123!;TrustServerCertificate=True
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4

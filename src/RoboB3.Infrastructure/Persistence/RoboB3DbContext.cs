@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using RoboB3.Application.Abstractions;
 using RoboB3.Domain.Audit;
+using RoboB3.Domain.Backtesting;
 using RoboB3.Domain.MarketData;
 using RoboB3.Domain.Risk;
 
@@ -17,6 +18,8 @@ public sealed class RoboB3DbContext(DbContextOptions<RoboB3DbContext> options) :
     public DbSet<TradingState> TradingStates => Set<TradingState>();
 
     public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
+
+    public DbSet<BacktestRun> BacktestRuns => Set<BacktestRun>();
 
     Task IUnitOfWork.SaveChangesAsync(CancellationToken cancellationToken) => SaveChangesAsync(cancellationToken);
 

@@ -66,6 +66,7 @@ app.MapHealthChecks("/health").AllowAnonymous();
 app.MapAuthEndpoints();
 app.MapTradingEndpoints();
 app.MapMarketDataEndpoints();
+app.MapBacktestEndpoints();
 
 await app.RunAsync();
 return 0;

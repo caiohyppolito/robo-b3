@@ -16,6 +16,7 @@ internal sealed class CandleConfiguration : IEntityTypeConfiguration<Candle>
         builder.Property(c => c.High).HasPrecision(18, 6);
         builder.Property(c => c.Low).HasPrecision(18, 6);
         builder.Property(c => c.Close).HasPrecision(18, 6);
+        builder.Property(c => c.AdjustedClose).HasPrecision(18, 6);
         builder.HasIndex(c => new { c.Symbol, c.Timeframe, c.OpenTime }).IsUnique();
         builder.HasOne<Asset>().WithMany().HasForeignKey(c => c.Symbol).OnDelete(DeleteBehavior.Restrict);
     }

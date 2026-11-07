@@ -30,6 +30,11 @@ internal static class YahooChartParser
         var lows = quote.GetProperty("low");
         var closes = quote.GetProperty("close");
         var volumes = quote.GetProperty("volume");
+        JsonElement? adjustedCloses = result.GetProperty("indicators").TryGetProperty("adjclose", out var adj)
+            && adj.GetArrayLength() > 0
+            && adj[0].TryGetProperty("adjclose", out var adjValues)
+            ? adjValues
+            : null;
 
         var candles = new List<Candle>(timestamps.GetArrayLength());
         for (var i = 0; i < timestamps.GetArrayLength(); i++)
@@ -49,8 +54,10 @@ internal static class YahooChartParser
             var localDate = DateTimeOffset.FromUnixTimeSeconds(timestamps[i].GetInt64() + gmtOffset).UtcDateTime.Date;
             var openTime = new DateTimeOffset(localDate, TimeSpan.Zero);
 
+            decimal? adjustedClose = adjustedCloses is { } values && TryGetDecimal(values[i], out var a) ? a : null;
+
             candles.Add(new Candle(symbol, Timeframe.D1, openTime, open, Math.Max(high, Math.Max(open, close)),
-                Math.Min(low, Math.Min(open, close)), close, volume));
+                Math.Min(low, Math.Min(open, close)), close, volume, adjustedClose));
         }
 
         return candles;

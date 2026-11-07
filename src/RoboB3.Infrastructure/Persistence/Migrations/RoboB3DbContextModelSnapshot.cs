@@ -56,6 +56,136 @@ namespace RoboB3.Infrastructure.Persistence.Migrations
                     b.ToTable("AuditLog", "robo");
                 });
 
+            modelBuilder.Entity("RoboB3.Domain.Backtesting.BacktestRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("ApplyTaxes")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Equity")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Events")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateOnly>("From")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Parameters")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal>("RiskPerTradePercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<string>("StrategyKey")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Symbol")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateOnly>("To")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Trades")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.ComplexProperty(typeof(Dictionary<string, object>), "Metrics", "RoboB3.Domain.Backtesting.BacktestRun.Metrics#PerformanceMetrics", b1 =>
+                        {
+                            b1.IsRequired();
+
+                            b1.Property<decimal>("AverageTradePercent")
+                                .HasPrecision(18, 4)
+                                .HasColumnType("decimal(18,4)");
+
+                            b1.Property<decimal>("BenchmarkMaxDrawdownPercent")
+                                .HasPrecision(18, 4)
+                                .HasColumnType("decimal(18,4)");
+
+                            b1.Property<decimal>("BenchmarkReturnPercent")
+                                .HasPrecision(18, 4)
+                                .HasColumnType("decimal(18,4)");
+
+                            b1.Property<decimal>("CagrPercent")
+                                .HasPrecision(18, 4)
+                                .HasColumnType("decimal(18,4)");
+
+                            b1.Property<decimal>("CostsPaid")
+                                .HasPrecision(18, 4)
+                                .HasColumnType("decimal(18,4)");
+
+                            b1.Property<decimal>("ExposurePercent")
+                                .HasPrecision(18, 4)
+                                .HasColumnType("decimal(18,4)");
+
+                            b1.Property<decimal>("FinalEquity")
+                                .HasPrecision(18, 4)
+                                .HasColumnType("decimal(18,4)");
+
+                            b1.Property<decimal>("InitialCapital")
+                                .HasPrecision(18, 4)
+                                .HasColumnType("decimal(18,4)");
+
+                            b1.Property<decimal>("InterestEarned")
+                                .HasPrecision(18, 4)
+                                .HasColumnType("decimal(18,4)");
+
+                            b1.Property<decimal>("MaxDrawdownPercent")
+                                .HasPrecision(18, 4)
+                                .HasColumnType("decimal(18,4)");
+
+                            b1.Property<decimal>("ProfitFactor")
+                                .HasPrecision(18, 4)
+                                .HasColumnType("decimal(18,4)");
+
+                            b1.Property<decimal>("RiskFreeReturnPercent")
+                                .HasPrecision(18, 4)
+                                .HasColumnType("decimal(18,4)");
+
+                            b1.Property<decimal>("Sharpe")
+                                .HasPrecision(18, 4)
+                                .HasColumnType("decimal(18,4)");
+
+                            b1.Property<decimal>("TaxesPaid")
+                                .HasPrecision(18, 4)
+                                .HasColumnType("decimal(18,4)");
+
+                            b1.Property<decimal>("TotalReturnPercent")
+                                .HasPrecision(18, 4)
+                                .HasColumnType("decimal(18,4)");
+
+                            b1.Property<int>("Trades")
+                                .HasColumnType("int");
+
+                            b1.Property<decimal>("VolatilityPercent")
+                                .HasPrecision(18, 4)
+                                .HasColumnType("decimal(18,4)");
+
+                            b1.Property<decimal>("WinRatePercent")
+                                .HasPrecision(18, 4)
+                                .HasColumnType("decimal(18,4)");
+                        });
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.ToTable("BacktestRuns", "robo");
+                });
+
             modelBuilder.Entity("RoboB3.Domain.MarketData.Asset", b =>
                 {
                     b.Property<string>("Symbol")
@@ -94,6 +224,10 @@ namespace RoboB3.Infrastructure.Persistence.Migrations
                         .HasColumnType("bigint");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<decimal?>("AdjustedClose")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("decimal(18,6)");
 
                     b.Property<decimal>("Close")
                         .HasPrecision(18, 6)

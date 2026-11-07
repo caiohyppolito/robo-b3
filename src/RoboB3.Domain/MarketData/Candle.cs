@@ -18,12 +18,13 @@ public sealed class Candle
         decimal high,
         decimal low,
         decimal close,
-        long volume)
+        long volume,
+        decimal? adjustedClose = null)
     {
         Symbol = Guard.NotBlank(symbol, nameof(symbol)).ToUpperInvariant();
         Timeframe = timeframe;
         OpenTime = openTime.ToUniversalTime();
-        SetPrices(open, high, low, close, volume);
+        SetPrices(open, high, low, close, volume, adjustedClose);
     }
 
     public long Id { get; private set; }
@@ -45,6 +46,9 @@ public sealed class Candle
 
     public long Volume { get; private set; }
 
+    /// <summary>Fechamento ajustado por proventos (dividendos, desdobramentos), quando o provedor informa.</summary>
+    public decimal? AdjustedClose { get; private set; }
+
     /// <summary>Atualiza os preços de uma barra ainda em formação ou corrigida pelo provedor.</summary>
     public void UpdateFrom(Candle other)
     {
@@ -54,10 +58,10 @@ public sealed class Candle
             throw new DomainException("Só é possível atualizar um candle com a mesma chave.");
         }
 
-        SetPrices(other.Open, other.High, other.Low, other.Close, other.Volume);
+        SetPrices(other.Open, other.High, other.Low, other.Close, other.Volume, other.AdjustedClose);
     }
 
-    private void SetPrices(decimal open, decimal high, decimal low, decimal close, long volume)
+    private void SetPrices(decimal open, decimal high, decimal low, decimal close, long volume, decimal? adjustedClose)
     {
         Guard.Positive(open, nameof(open));
         Guard.Positive(high, nameof(high));
@@ -74,10 +78,16 @@ public sealed class Candle
             throw new DomainException("Volume não pode ser negativo.");
         }
 
+        if (adjustedClose is <= 0)
+        {
+            throw new DomainException("Fechamento ajustado deve ser maior que zero.");
+        }
+
         Open = open;
         High = high;
         Low = low;
         Close = close;
         Volume = volume;
+        AdjustedClose = adjustedClose;
     }
 }

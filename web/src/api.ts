@@ -130,3 +130,160 @@ export const api = {
     request<Candle[]>(`/api/assets/${encodeURIComponent(symbol)}/candles?days=${days}`),
   audit: (count = 20) => request<AuditEntry[]>(`/api/audit?count=${count}`),
 };
+
+// ---------- Backtest (Fase 2) ----------
+
+export interface ParameterDef {
+  name: string;
+  description: string;
+  default: number;
+  min: number;
+  max: number;
+}
+
+export interface StrategyDef {
+  key: string;
+  name: string;
+  description: string;
+  parameters: ParameterDef[];
+}
+
+export interface BacktestDefaults {
+  riskFreeRatePercent: number;
+  brokeragePerOrder: number;
+  feesPercent: number;
+  slippagePercent: number;
+  futuresFeePerContract: number;
+}
+
+export interface Simulation {
+  initialCapital?: number;
+  riskPerTradePercent?: number;
+  maxPositionPercent?: number;
+  riskFreeRatePercent?: number;
+  applyTaxes?: boolean;
+}
+
+export interface Metrics {
+  initialCapital: number;
+  finalEquity: number;
+  totalReturnPercent: number;
+  cagrPercent: number;
+  maxDrawdownPercent: number;
+  volatilityPercent: number;
+  sharpe: number;
+  trades: number;
+  winRatePercent: number;
+  profitFactor: number;
+  averageTradePercent: number;
+  exposurePercent: number;
+  costsPaid: number;
+  taxesPaid: number;
+  interestEarned: number;
+  benchmarkReturnPercent: number;
+  benchmarkMaxDrawdownPercent: number;
+  riskFreeReturnPercent: number;
+}
+
+export interface BacktestSummary {
+  id: string;
+  createdAt: string;
+  symbol: string;
+  strategy: string;
+  parameters: Record<string, number>;
+  startDate: string;
+  endDate: string;
+  metrics: Metrics;
+}
+
+export interface Trade {
+  direction: "Long" | "Short" | "Flat";
+  entryDate: string;
+  entryPrice: number;
+  exitDate: string;
+  exitPrice: number;
+  quantity: number;
+  grossProfit: number;
+  costs: number;
+  netProfit: number;
+  returnPercent: number;
+  exitReason: string;
+}
+
+export interface EquityPoint {
+  date: string;
+  equity: number;
+  benchmark: number;
+  riskFree: number;
+}
+
+export interface BacktestDetail {
+  summary: BacktestSummary;
+  riskPerTradePercent: number;
+  applyTaxes: boolean;
+  trades: Trade[];
+  equity: EquityPoint[];
+  events: { date: string; message: string }[];
+}
+
+export interface ComparisonRow {
+  symbol: string;
+  strategyKey: string;
+  parameters: Record<string, number>;
+  inSampleSharpe: number;
+  inSampleReturnPercent: number;
+  outOfSampleSharpe: number;
+  outOfSampleReturnPercent: number;
+  outOfSampleMaxDrawdownPercent: number;
+  outOfSampleTrades: number;
+  outOfSampleBenchmarkReturnPercent: number;
+  outOfSampleRiskFreeReturnPercent: number;
+}
+
+export interface StrategyRanking {
+  strategyKey: string;
+  strategyName: string;
+  assets: number;
+  averageOutOfSampleSharpe: number;
+  averageOutOfSampleReturnPercent: number;
+  worstOutOfSampleDrawdownPercent: number;
+  beatsBuyAndHoldPercent: number;
+  beatsRiskFreePercent: number;
+}
+
+export interface ComparisonResult {
+  inSampleFrom: string;
+  outOfSampleFrom: string;
+  outOfSampleTo: string;
+  ranking: StrategyRanking[];
+  rows: ComparisonRow[];
+  skipped: string[];
+}
+
+export interface RunBacktestRequest {
+  symbol: string;
+  strategy: string;
+  parameters: Record<string, number>;
+  from?: string;
+  to?: string;
+  simulation: Simulation;
+}
+
+export interface CompareRequest {
+  symbols?: string[];
+  from?: string;
+  to?: string;
+  inSamplePercent?: number;
+  simulation: Simulation;
+}
+
+export const backtestApi = {
+  strategies: () => request<StrategyDef[]>("/api/strategies"),
+  defaults: () => request<BacktestDefaults>("/api/backtests/defaults"),
+  run: (body: RunBacktestRequest) =>
+    request<BacktestDetail>("/api/backtests", { method: "POST", body: JSON.stringify(body) }),
+  list: () => request<BacktestSummary[]>("/api/backtests?count=20"),
+  get: (id: string) => request<BacktestDetail>(`/api/backtests/${encodeURIComponent(id)}`),
+  compare: (body: CompareRequest) =>
+    request<ComparisonResult>("/api/backtests/compare", { method: "POST", body: JSON.stringify(body) }),
+};
