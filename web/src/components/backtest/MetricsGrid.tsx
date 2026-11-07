@@ -25,6 +25,10 @@ export function MetricsGrid({ metrics: m }: { metrics: Metrics }) {
     { label: "Rendimento do caixa", value: formatBrl(m.interestEarned), hint: "CDI sobre o dinheiro parado" },
   ];
 
+  if (m.signalsFiltered > 0) {
+    tiles.push({ label: "Sinais vetados pela IA", value: String(m.signalsFiltered), hint: "entradas que a IA julgou ruins" });
+  }
+
   return (
     <div className="metrics">
       {tiles.map((t) => (

@@ -3,6 +3,7 @@ import { api, session, setUnauthorizedHandler, type Status } from "./api";
 import { AssetsTable } from "./components/AssetsTable";
 import { AuditList } from "./components/AuditList";
 import { BacktestPage } from "./components/backtest/BacktestPage";
+import { LearningPage } from "./components/learning/LearningPage";
 import { Login } from "./components/Login";
 import { RiskLimitsForm } from "./components/RiskLimitsForm";
 import { StatusPanel } from "./components/StatusPanel";
@@ -14,7 +15,7 @@ export function App() {
   const [status, setStatus] = useState<Status | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [page, setPage] = useState<"painel" | "backtest">("painel");
+  const [page, setPage] = useState<"painel" | "backtest" | "ia">("painel");
 
   useEffect(() => setUnauthorizedHandler(() => setLoggedIn(false)), []);
 
@@ -48,6 +49,9 @@ export function App() {
           <button className={page === "backtest" ? "active" : ""} onClick={() => setPage("backtest")}>
             Backtest
           </button>
+          <button className={page === "ia" ? "active" : ""} onClick={() => setPage("ia")}>
+            IA
+          </button>
         </nav>
         <span className="badge">carteira simulada</span>
         <button
@@ -64,6 +68,10 @@ export function App() {
       {page === "backtest" ? (
         <main>
           <BacktestPage />
+        </main>
+      ) : page === "ia" ? (
+        <main>
+          <LearningPage />
         </main>
       ) : status ? (
         <main>

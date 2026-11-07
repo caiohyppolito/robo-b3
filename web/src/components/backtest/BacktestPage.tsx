@@ -38,6 +38,7 @@ export function BacktestPage() {
     applyTaxes: true,
   });
 
+  const [useMetaModel, setUseMetaModel] = useState(false);
   const [running, setRunning] = useState<"run" | "compare" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<BacktestDetail | null>(null);
@@ -67,7 +68,7 @@ export function BacktestPage() {
     setRunning("run");
     setError(null);
     try {
-      setResult(await backtestApi.run({ symbol, strategy: strategyKey, parameters: params, from, to, simulation }));
+      setResult(await backtestApi.run({ symbol, strategy: strategyKey, parameters: params, from, to, simulation, useMetaModel }));
       setHistory(await backtestApi.list());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha no backtest");
@@ -155,6 +156,11 @@ export function BacktestPage() {
           ))}
         </div>
 
+        <label className="checkbox">
+          <input type="checkbox" checked={useMetaModel} onChange={(e) => setUseMetaModel(e.target.checked)} />
+          Usar o filtro da IA (modelo ativo da estratégia, se houver)
+        </label>
+
         <details>
           <summary>Simulação e custos</summary>
           <div className="form-grid">
@@ -204,6 +210,7 @@ export function BacktestPage() {
           <h2>
             {result.summary.symbol} · {strategyName(result.summary.strategy)} · {formatDate(result.summary.startDate)} a{" "}
             {formatDate(result.summary.endDate)}
+            {result.summary.metaModelId && " · com filtro da IA"}
           </h2>
           <MetricsGrid metrics={result.summary.metrics} />
           <EquityChart points={result.equity} />

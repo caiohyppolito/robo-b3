@@ -28,6 +28,10 @@ public class BacktestIntegrationTests
     internal static async Task SeedAsync(RoboB3DbContext db)
     {
         await new DatabaseInitializer(db, Clock, NullLogger<DatabaseInitializer>.Instance).InitializeAsync(false, CancellationToken.None);
+        if (await db.Candles.AnyAsync())
+        {
+            return;
+        }
 
         var start = new DateTime(2023, 11, 6, 0, 0, 0, DateTimeKind.Utc);
         foreach (var (symbol, phase) in new[] { ("PETR4", 0d), ("VALE3", 1.3d) })
@@ -57,6 +61,8 @@ public class BacktestIntegrationTests
         risk ?? new FixedRiskSettings(),
         new BacktestRunRepository(db),
         db,
+        new MetaModelRepository(db),
+        new Learning.MlNetMetaModelEngine(),
         Options.Create(new BacktestOptions()),
         Clock);
 

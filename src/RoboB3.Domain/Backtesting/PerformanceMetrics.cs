@@ -18,7 +18,8 @@ public sealed record PerformanceMetrics(
     decimal InterestEarned,
     decimal BenchmarkReturnPercent,
     decimal BenchmarkMaxDrawdownPercent,
-    decimal RiskFreeReturnPercent)
+    decimal RiskFreeReturnPercent,
+    int SignalsFiltered = 0)
 {
     public const int TradingDaysPerYear = 252;
     private const decimal MaxProfitFactor = 999m;

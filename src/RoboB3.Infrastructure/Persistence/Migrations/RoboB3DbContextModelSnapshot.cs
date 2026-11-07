@@ -78,6 +78,9 @@ namespace RoboB3.Infrastructure.Persistence.Migrations
                     b.Property<DateOnly>("From")
                         .HasColumnType("date");
 
+                    b.Property<Guid?>("MetaModelId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("Parameters")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -159,6 +162,9 @@ namespace RoboB3.Infrastructure.Persistence.Migrations
                                 .HasPrecision(18, 4)
                                 .HasColumnType("decimal(18,4)");
 
+                            b1.Property<int>("SignalsFiltered")
+                                .HasColumnType("int");
+
                             b1.Property<decimal>("TaxesPaid")
                                 .HasPrecision(18, 4)
                                 .HasColumnType("decimal(18,4)");
@@ -184,6 +190,165 @@ namespace RoboB3.Infrastructure.Persistence.Migrations
                     b.HasIndex("CreatedAt");
 
                     b.ToTable("BacktestRuns", "robo");
+                });
+
+            modelBuilder.Entity("RoboB3.Domain.Learning.MetaModel", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("ActivatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Analysis")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<double>("Auc")
+                        .HasColumnType("float");
+
+                    b.Property<decimal>("BaseAverageReturnPercent")
+                        .HasPrecision(10, 4)
+                        .HasColumnType("decimal(10,4)");
+
+                    b.Property<decimal>("BaseWinRatePercent")
+                        .HasPrecision(10, 4)
+                        .HasColumnType("decimal(10,4)");
+
+                    b.Property<decimal?>("ChampionSharpe")
+                        .HasPrecision(10, 4)
+                        .HasColumnType("decimal(10,4)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Decision")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("FeatureImportance")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal>("FilteredAverageReturnPercent")
+                        .HasPrecision(10, 4)
+                        .HasColumnType("decimal(10,4)");
+
+                    b.Property<decimal>("FilteredSharpe")
+                        .HasPrecision(10, 4)
+                        .HasColumnType("decimal(10,4)");
+
+                    b.Property<decimal>("FilteredWinRatePercent")
+                        .HasPrecision(10, 4)
+                        .HasColumnType("decimal(10,4)");
+
+                    b.Property<decimal>("KeptPercent")
+                        .HasPrecision(10, 4)
+                        .HasColumnType("decimal(10,4)");
+
+                    b.Property<byte[]>("ModelBytes")
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<DateTimeOffset?>("RetiredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateOnly>("SplitDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("StrategyKey")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<double>("Threshold")
+                        .HasColumnType("float");
+
+                    b.Property<int>("TrainingExamples")
+                        .HasColumnType("int");
+
+                    b.Property<DateOnly>("TrainingFrom")
+                        .HasColumnType("date");
+
+                    b.Property<decimal>("UnfilteredSharpe")
+                        .HasPrecision(10, 4)
+                        .HasColumnType("decimal(10,4)");
+
+                    b.Property<int>("ValidationExamples")
+                        .HasColumnType("int");
+
+                    b.Property<DateOnly>("ValidationTo")
+                        .HasColumnType("date");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("StrategyKey")
+                        .IsUnique()
+                        .HasFilter("[Status] = 'Active'");
+
+                    b.ToTable("MetaModels", "robo");
+                });
+
+            modelBuilder.Entity("RoboB3.Domain.Learning.TradeJournalEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Direction")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<DateOnly>("EntryDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly>("ExitDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Features")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<double?>("ModelProbability")
+                        .HasColumnType("float");
+
+                    b.Property<decimal>("NetProfit")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTimeOffset>("RecordedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<decimal>("ReturnPercent")
+                        .HasPrecision(10, 4)
+                        .HasColumnType("decimal(10,4)");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<string>("StrategyKey")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Symbol")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StrategyKey", "EntryDate");
+
+                    b.ToTable("TradeJournal", "robo");
                 });
 
             modelBuilder.Entity("RoboB3.Domain.MarketData.Asset", b =>

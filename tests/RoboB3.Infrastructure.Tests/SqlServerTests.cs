@@ -77,10 +77,7 @@ public class SqlServerTests(SqlServerDatabase database) : IClassFixture<SqlServe
     public async Task Backtest_e_gravado_e_lido_de_volta_com_series_completas()
     {
         await using var db = database.CreateContext();
-        if (!await db.Candles.AnyAsync())
-        {
-            await BacktestIntegrationTests.SeedAsync(db);
-        }
+        await BacktestIntegrationTests.SeedAsync(db);
 
         var service = BacktestIntegrationTests.Service(db, new RiskSettingsRepository(db));
         var request = new BacktestRequest("petr4", StrategyKeys.SmaCross, null, new DateOnly(2024, 6, 1), null, new SimulationSettings());
@@ -96,5 +93,43 @@ public class SqlServerTests(SqlServerDatabase database) : IClassFixture<SqlServe
         Assert.Equal(run.Trades, loaded.Trades);
         Assert.Equal(run.Metrics, loaded.Metrics);
         Assert.Equal(100m, loaded.Parameters["slow"]);
+    }
+
+    [SqlServerFact]
+    public async Task Ciclo_de_aprendizado_respeita_o_indice_de_um_modelo_ativo_por_estrategia()
+    {
+        await using var db = database.CreateContext();
+        await BacktestIntegrationTests.SeedAsync(db);
+
+        var service = LearningIntegrationTests.Service(db, new RiskSettingsRepository(db));
+        await service.TrainAsync(StrategyKeys.RsiMeanReversion, CancellationToken.None);
+        await service.TrainAsync(StrategyKeys.RsiMeanReversion, CancellationToken.None);
+        db.ChangeTracker.Clear();
+
+        var models = await db.MetaModels.Where(m => m.StrategyKey == StrategyKeys.RsiMeanReversion).ToListAsync();
+        Assert.Equal(2, models.Count);
+        Assert.InRange(models.Count(m => m.Status == Domain.Learning.MetaModelStatus.Active), 0, 1);
+        Assert.All(models.Where(m => m.ModelBytes is not null), m => Assert.Equal(Domain.Learning.FeatureVector.Count, m.FeatureImportance.Count));
+    }
+
+    [SqlServerFact]
+    public async Task Indice_impede_dois_modelos_ativos_na_mesma_estrategia()
+    {
+        await using var db = database.CreateContext();
+        static Domain.Learning.MetaModel Active()
+        {
+            var day = new DateOnly(2025, 1, 2);
+            var model = new Domain.Learning.MetaModel("donchian-breakout", DateTimeOffset.UnixEpoch, day, day, day, 50, 0.5,
+                new Domain.Learning.ValidationReport(20, 0.6, 50, 55, 0, 0, 50), new Domain.Learning.EconomicTest(0, 0.2m, null),
+                new Dictionary<string, double>(), [1]);
+            model.Activate("teste", DateTimeOffset.UnixEpoch);
+            return model;
+        }
+
+        db.MetaModels.Add(Active());
+        await db.SaveChangesAsync();
+        db.MetaModels.Add(Active());
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
     }
 }

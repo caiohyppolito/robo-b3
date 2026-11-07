@@ -130,3 +130,25 @@ summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; margin-bottom
 .key-line { display: inline-block; width: 14px; height: 2px; border-radius: 1px; }
 .tooltip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem 0.7rem; box-shadow: 0 4px 16px rgb(0 0 0 / 0.12); min-width: 180px; font-size: 0.85rem; }
 .tooltip-row { display: flex; align-items: center; gap: 0.45rem; margin-top: 0.2rem; font-variant-numeric: tabular-nums; }
+
+/* ---------- Fase 3: IA ---------- */
+:root { --status-good: #138a4b; --status-critical: #c62828; }
+@media (prefers-color-scheme: dark) { :root { --status-good: #3ccf7f; --status-critical: #ff6b6b; } }
+
+.status { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.8rem; font-weight: 600; padding: 0.15rem 0.55rem; border-radius: 999px; border: 1px solid var(--border); }
+.status-active { color: var(--status-good); border-color: var(--status-good); }
+.status-rejected { color: var(--status-critical); border-color: var(--status-critical); }
+.status-retired { color: var(--muted); }
+tr.selected td { background: var(--bg); }
+.analysis { white-space: pre-wrap; line-height: 1.5; background: var(--bg); border-radius: 8px; padding: 0.8rem 1rem; font-size: 0.92rem; }
+
+.importance { display: flex; flex-direction: column; gap: 2px; max-width: 760px; }
+.importance-row { display: flex; align-items: center; gap: 0.75rem; outline: none; }
+.importance-row:focus-visible { box-shadow: 0 0 0 2px var(--primary); border-radius: 4px; }
+.importance-label { flex: none; font-size: 0.82rem; color: var(--muted); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.importance-track { position: relative; flex: 1; height: 100%; }
+.importance-bar { position: absolute; top: 6px; bottom: 6px; background: var(--series-1); border-radius: 0 4px 4px 0; min-width: 2px; }
+.importance-bar.negative { background: var(--muted); border-radius: 4px 0 0 4px; opacity: 0.6; }
+.importance-zero { position: absolute; top: 2px; bottom: 2px; width: 1px; background: var(--border); }
+.importance-value { position: absolute; top: 50%; transform: translateY(-50%); font-size: 0.78rem; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+@media (max-width: 560px) { .importance-label { width: 120px !important; } }

@@ -183,6 +183,7 @@ export interface Metrics {
   benchmarkReturnPercent: number;
   benchmarkMaxDrawdownPercent: number;
   riskFreeReturnPercent: number;
+  signalsFiltered: number;
 }
 
 export interface BacktestSummary {
@@ -194,6 +195,7 @@ export interface BacktestSummary {
   startDate: string;
   endDate: string;
   metrics: Metrics;
+  metaModelId: string | null;
 }
 
 export interface Trade {
@@ -208,6 +210,7 @@ export interface Trade {
   netProfit: number;
   returnPercent: number;
   exitReason: string;
+  entryProbability?: number | null;
 }
 
 export interface EquityPoint {
@@ -267,6 +270,7 @@ export interface RunBacktestRequest {
   from?: string;
   to?: string;
   simulation: Simulation;
+  useMetaModel?: boolean;
 }
 
 export interface CompareRequest {
@@ -286,4 +290,58 @@ export const backtestApi = {
   get: (id: string) => request<BacktestDetail>(`/api/backtests/${encodeURIComponent(id)}`),
   compare: (body: CompareRequest) =>
     request<ComparisonResult>("/api/backtests/compare", { method: "POST", body: JSON.stringify(body) }),
+};
+
+// ---------- IA (Fase 3) ----------
+
+export type MetaModelStatus = "Active" | "Retired" | "Rejected";
+
+export interface MetaModel {
+  id: string;
+  strategy: string;
+  createdAt: string;
+  status: MetaModelStatus;
+  decision: string;
+  trainingFrom: string;
+  splitDate: string;
+  validationTo: string;
+  trainingExamples: number;
+  validationExamples: number;
+  threshold: number;
+  auc: number;
+  baseWinRatePercent: number;
+  filteredWinRatePercent: number;
+  baseAverageReturnPercent: number;
+  filteredAverageReturnPercent: number;
+  keptPercent: number;
+  unfilteredSharpe: number;
+  filteredSharpe: number;
+  championSharpe: number | null;
+  featureImportance: Record<string, number>;
+  activatedAt: string | null;
+  retiredAt: string | null;
+  analysis: string | null;
+}
+
+export interface JournalEntry {
+  id: string;
+  source: "Paper" | "Live";
+  strategy: string;
+  symbol: string;
+  direction: string;
+  entryDate: string;
+  exitDate: string;
+  netProfit: number;
+  returnPercent: number;
+  modelProbability: number | null;
+}
+
+export const learningApi = {
+  models: () => request<MetaModel[]>("/api/learning/models?count=50"),
+  train: (strategy: string) =>
+    request<MetaModel>("/api/learning/train", { method: "POST", body: JSON.stringify({ strategy }) }),
+  analyze: (id: string) =>
+    request<MetaModel>(`/api/learning/models/${encodeURIComponent(id)}/analysis`, { method: "POST" }),
+  analyst: () => request<{ isConfigured: boolean }>("/api/learning/analyst"),
+  journal: () => request<JournalEntry[]>("/api/learning/journal?count=50"),
 };

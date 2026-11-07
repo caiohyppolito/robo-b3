@@ -14,7 +14,8 @@ public sealed record BacktestRequest(
     IReadOnlyDictionary<string, decimal>? Parameters,
     DateOnly? From,
     DateOnly? To,
-    SimulationSettings Settings);
+    SimulationSettings Settings,
+    bool UseMetaModel = false);
 
 public sealed record ComparisonRequest(
     IReadOnlyList<string>? Symbols,
