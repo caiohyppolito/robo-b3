@@ -153,7 +153,7 @@ dotnet user-secrets set "ConnectionStrings:RoboB3" "Server=localhost,1433;Databa
 ### 3. Subir tudo (quatro terminais)
 
 ```powershell
-dotnet run --project src/RoboB3.Api        # API em http://localhost:5080 (cria o banco na primeira execução)
+dotnet run --project src/RoboB3.Api        # API em http://localhost:5081 (cria o banco na primeira execução)
 dotnet run --project src/RoboB3.Workers    # dados, risco, IA e operação simulada
 cd web; npm install; npm run dev           # painel em http://localhost:5173
 cd mt5-gateway; .venv\Scripts\python -m gateway   # conector do MT5 (veja mt5-gateway/README.md)
