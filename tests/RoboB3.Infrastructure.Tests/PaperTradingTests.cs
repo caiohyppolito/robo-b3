@@ -316,6 +316,25 @@ public class PaperTradingTests
     }
 
     [Fact]
+    public async Task Alvo_atingido_encerra_a_posicao_com_lucro()
+    {
+        await AssignAsync("WIN", StrategyKeys.BuyAndHold);
+        await Service().RunCycleAsync(CancellationToken.None);
+        var position = await _db.PaperPositions.SingleAsync();
+        _db.Entry(position).Property(p => p.TargetPrice).CurrentValue = 130_200m;
+        await _db.SaveChangesAsync();
+
+        _feed.Price = 130_300m;
+        var report = await Service().RunCycleAsync(CancellationToken.None);
+
+        Assert.Equal(1, report.Closed);
+        Assert.Empty(await _db.PaperPositions.ToListAsync());
+        var fill = await _db.PaperFills.OrderBy(f => f.Id).LastAsync();
+        Assert.Equal("alvo", fill.Reason);
+        Assert.True(Assert.Single(await _db.TradeJournal.ToListAsync()).IsWin);
+    }
+
+    [Fact]
     public async Task Day_trade_e_zerado_no_horario_de_encerramento()
     {
         await AssignAsync("WIN", StrategyKeys.BuyAndHold, dayTrade: true);

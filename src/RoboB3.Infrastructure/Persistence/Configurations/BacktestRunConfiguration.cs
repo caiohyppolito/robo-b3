@@ -49,3 +49,17 @@ internal sealed class BacktestRunConfiguration : IEntityTypeConfiguration<Backte
             v => JsonSerializer.Serialize(v, Json),
             v => (TModel)JsonSerializer.Deserialize<TConcrete>(v, Json)!);
 }
+
+internal sealed class ResearchExperimentConfiguration : IEntityTypeConfiguration<ResearchExperiment>
+{
+    public void Configure(EntityTypeBuilder<ResearchExperiment> builder)
+    {
+        builder.ToTable("ResearchExperiments");
+        builder.HasKey(e => e.Id);
+        builder.Property(e => e.Id).ValueGeneratedNever();
+        builder.Property(e => e.Kind).HasMaxLength(50);
+        builder.Property(e => e.Description).HasMaxLength(500);
+        builder.Property(e => e.CodeVersion).HasMaxLength(100);
+        builder.HasIndex(e => e.CreatedAt);
+    }
+}

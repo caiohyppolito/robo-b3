@@ -315,10 +315,18 @@ public sealed partial class PaperTradingService(
     {
         foreach (var position in cycle.Positions.ToList())
         {
-            if (await FreshQuoteAsync(cycle, position.ContractSymbol, cancellationToken) is { } quote
-                && position.IsStopHit(quote.Bid, quote.Ask))
+            if (await FreshQuoteAsync(cycle, position.ContractSymbol, cancellationToken) is not { } quote)
+            {
+                continue;
+            }
+
+            if (position.IsStopHit(quote.Bid, quote.Ask))
             {
                 await CloseAsync(cycle, position, quote, "stop", cancellationToken);
+            }
+            else if (position.IsTargetHit(quote.Bid, quote.Ask))
+            {
+                await CloseAsync(cycle, position, quote, "alvo", cancellationToken);
             }
         }
     }
@@ -504,7 +512,10 @@ public sealed partial class PaperTradingService(
         }
 
         decimal? stop = stopDistance is > 0 ? instrument.RoundToTick(price - ((int)target * stopDistance.Value)) : null;
-        var instruction = new OrderInstruction(contract, side, quantity, price, stop, null, NewClientId("e"), $"entrada {assignment.StrategyKey}");
+        decimal? takeProfit = signal.TargetPrice is { } signalTarget
+            ? instrument.RoundToTick(price + ((int)target * Math.Abs(signalTarget - history.Current.Close)))
+            : null;
+        var instruction = new OrderInstruction(contract, side, quantity, price, stop, null, NewClientId("e"), $"entrada {assignment.StrategyKey}", takeProfit);
         decision.SetOrder(instruction.ClientOrderId);
         var (result, intent) = await SendWithIntentAsync(cycle, instruction, OrderPurpose.Entry, assignment.Id, null, assignment.StrategyKey, cancellationToken);
         if (!result.Filled || result.Quantity <= 0)
@@ -515,7 +526,7 @@ public sealed partial class PaperTradingService(
         }
 
         var (position, fill) = cycle.Account.OpenPosition(assignment.Id, instrument, contract, assignment.StrategyKey, target, result.Quantity,
-            result.Price, stop, backtestOptions.Value.Costs(), features, probability, cycle.Now, result.BrokerTicket);
+            result.Price, stop, backtestOptions.Value.Costs(), features, probability, cycle.Now, result.BrokerTicket, takeProfit);
         paper.AddPosition(position);
         paper.AddFill(fill);
         intent.LinkPosition(position.Id);

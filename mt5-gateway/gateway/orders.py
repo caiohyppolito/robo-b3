@@ -19,6 +19,7 @@ class OrderIn(BaseModel):
     side: Literal["buy", "sell"]
     volume: int = Field(gt=0)
     stop_loss: float | None = Field(default=None, gt=0)
+    take_profit: float | None = Field(default=None, gt=0)
     # Ticket da posição a reduzir/encerrar (opcional).
     position_ticket: int | None = None
     # Identificador único da ordem no robô: repetir a chamada não repete a ordem.

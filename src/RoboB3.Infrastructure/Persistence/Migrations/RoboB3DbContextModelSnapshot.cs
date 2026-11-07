@@ -110,6 +110,9 @@ namespace RoboB3.Infrastructure.Persistence.Migrations
                         {
                             b1.IsRequired();
 
+                            b1.Property<int>("AmbiguousTrades")
+                                .HasColumnType("int");
+
                             b1.Property<decimal>("AverageTradePercent")
                                 .HasPrecision(18, 4)
                                 .HasColumnType("decimal(18,4)");
@@ -122,11 +125,27 @@ namespace RoboB3.Infrastructure.Persistence.Migrations
                                 .HasPrecision(18, 4)
                                 .HasColumnType("decimal(18,4)");
 
+                            b1.Property<decimal>("CVaR95Percent")
+                                .HasPrecision(18, 4)
+                                .HasColumnType("decimal(18,4)");
+
                             b1.Property<decimal>("CagrPercent")
                                 .HasPrecision(18, 4)
                                 .HasColumnType("decimal(18,4)");
 
+                            b1.Property<decimal>("Calmar")
+                                .HasPrecision(18, 4)
+                                .HasColumnType("decimal(18,4)");
+
                             b1.Property<decimal>("CostsPaid")
+                                .HasPrecision(18, 4)
+                                .HasColumnType("decimal(18,4)");
+
+                            b1.Property<decimal>("ExpectancyMargin95")
+                                .HasPrecision(18, 4)
+                                .HasColumnType("decimal(18,4)");
+
+                            b1.Property<decimal>("ExpectancyPerTrade")
                                 .HasPrecision(18, 4)
                                 .HasColumnType("decimal(18,4)");
 
@@ -165,6 +184,10 @@ namespace RoboB3.Infrastructure.Persistence.Migrations
                             b1.Property<int>("SignalsFiltered")
                                 .HasColumnType("int");
 
+                            b1.Property<decimal>("Sortino")
+                                .HasPrecision(18, 4)
+                                .HasColumnType("decimal(18,4)");
+
                             b1.Property<decimal>("TaxesPaid")
                                 .HasPrecision(18, 4)
                                 .HasColumnType("decimal(18,4)");
@@ -175,6 +198,10 @@ namespace RoboB3.Infrastructure.Persistence.Migrations
 
                             b1.Property<int>("Trades")
                                 .HasColumnType("int");
+
+                            b1.Property<decimal>("TurnoverPerYear")
+                                .HasPrecision(18, 4)
+                                .HasColumnType("decimal(18,4)");
 
                             b1.Property<decimal>("VolatilityPercent")
                                 .HasPrecision(18, 4)
@@ -190,6 +217,43 @@ namespace RoboB3.Infrastructure.Persistence.Migrations
                     b.HasIndex("CreatedAt");
 
                     b.ToTable("BacktestRuns", "robo");
+                });
+
+            modelBuilder.Entity("RoboB3.Domain.Backtesting.ResearchExperiment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CodeVersion")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("Trials")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.ToTable("ResearchExperiments", "robo");
                 });
 
             modelBuilder.Entity("RoboB3.Domain.Execution.ExecutionSettings", b =>
@@ -744,6 +808,10 @@ namespace RoboB3.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
+
+                    b.Property<decimal?>("TargetPrice")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("decimal(18,6)");
 
                     b.HasKey("Id");
 

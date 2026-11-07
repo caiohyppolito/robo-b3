@@ -89,6 +89,9 @@ internal static class BacktestEndpoints
 
         var group = app.MapGroup("/api/backtests").WithTags("Backtest");
 
+        group.MapGet("/experiments", async (IExperimentRepository experiments, CancellationToken ct, int count = 30) =>
+            (await experiments.ListRecentAsync(count, ct)).Select(e => new { e.Id, e.Kind, e.Description, e.Trials, e.CodeVersion, e.CreatedAt }));
+
         group.MapGet("/defaults", (IOptions<BacktestOptions> options) => options.Value);
 
         group.MapPost("/", async (RunBacktestDto dto, BacktestService service, CancellationToken ct) =>

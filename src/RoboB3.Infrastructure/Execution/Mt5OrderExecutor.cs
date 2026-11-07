@@ -32,7 +32,8 @@ internal sealed class Mt5OrderExecutor(HttpClient http, ExecutionMode mode) : IO
             instruction.PositionTicket,
             instruction.ClientOrderId,
             mode == ExecutionMode.Mt5Real ? "real" : "demo",
-            Truncate($"robo-b3 {instruction.Reason}", 31));
+            Truncate($"robo-b3 {instruction.Reason}", 31),
+            instruction.TakeProfit);
 
         try
         {
@@ -106,7 +107,8 @@ internal sealed class Mt5OrderExecutor(HttpClient http, ExecutionMode mode) : IO
         [property: JsonPropertyName("position_ticket")] long? PositionTicket,
         [property: JsonPropertyName("client_id")] string ClientId,
         [property: JsonPropertyName("expected_mode")] string ExpectedMode,
-        string Comment);
+        string Comment,
+        [property: JsonPropertyName("take_profit")] decimal? TakeProfit = null);
 
     internal sealed record OrderResultDto(bool Filled, decimal? Price, int? Volume, long? Ticket, string? Message);
 

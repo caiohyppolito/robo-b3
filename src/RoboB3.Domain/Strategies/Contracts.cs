@@ -11,8 +11,8 @@ public enum PositionDirection
     Long = 1,
 }
 
-/// <summary>Posição desejada após o fechamento da barra atual, com stop opcional.</summary>
-public sealed record StrategySignal(PositionDirection Target, decimal? StopPrice = null)
+/// <summary>Posição desejada após o fechamento da barra atual, com stop e alvo opcionais.</summary>
+public sealed record StrategySignal(PositionDirection Target, decimal? StopPrice = null, decimal? TargetPrice = null)
 {
     public static StrategySignal Flat { get; } = new(PositionDirection.Flat);
 }

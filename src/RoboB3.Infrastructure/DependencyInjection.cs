@@ -60,6 +60,7 @@ public static class DependencyInjection
         services.AddScoped<IExecutionSettingsRepository, ExecutionSettingsRepository>();
         services.AddScoped<IOrderExecutorFactory, OrderExecutorFactory>();
         services.AddScoped<IOrderIntentRepository, OrderIntentRepository>();
+        services.AddScoped<IExperimentRepository, ExperimentRepository>();
         services.AddScoped<ITradingLock, SqlServerTradingLock>();
         services.AddOptions<ExecutionOptions>().Bind(configuration.GetSection(ExecutionOptions.SectionName));
 

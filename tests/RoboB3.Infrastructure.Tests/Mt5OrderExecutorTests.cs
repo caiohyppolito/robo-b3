@@ -41,7 +41,7 @@ public class Mt5OrderExecutorTests
             """{"filled":true,"price":130010.0,"volume":2,"ticket":501,"message":"Executada."}""");
 
         var result = await executor.SendAsync(
-            new OrderInstruction("WINZ26", OrderSide.Buy, 2, 130_005m, 129_800m, null, "e-123456789", "entrada donchian-breakout"),
+            new OrderInstruction("WINZ26", OrderSide.Buy, 2, 130_005m, 129_800m, null, "e-123456789", "entrada donchian-breakout", TakeProfit: 130_400m),
             CancellationToken.None);
 
         Assert.Equal("/orders", recorder.Path);
@@ -51,6 +51,7 @@ public class Mt5OrderExecutorTests
         Assert.Equal("buy", root.GetProperty("side").GetString());
         Assert.Equal(2, root.GetProperty("volume").GetInt32());
         Assert.Equal(129_800m, root.GetProperty("stop_loss").GetDecimal());
+        Assert.Equal(130_400m, root.GetProperty("take_profit").GetDecimal());
         Assert.Equal(JsonValueKind.Null, root.GetProperty("position_ticket").ValueKind);
         Assert.Equal("e-123456789", root.GetProperty("client_id").GetString());
         Assert.Equal("demo", root.GetProperty("expected_mode").GetString());
@@ -71,6 +72,7 @@ public class Mt5OrderExecutorTests
         using var body = JsonDocument.Parse(recorder.Body!);
         Assert.Equal("real", body.RootElement.GetProperty("expected_mode").GetString());
         Assert.Equal(7, body.RootElement.GetProperty("position_ticket").GetInt64());
+        Assert.Equal(JsonValueKind.Null, body.RootElement.GetProperty("take_profit").ValueKind);
     }
 
     [Fact]

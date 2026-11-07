@@ -32,8 +32,10 @@ public sealed class PaperPosition
         double? probability,
         DateTimeOffset entryTime,
         ExecutionMode mode = ExecutionMode.Paper,
-        long? brokerTicket = null)
+        long? brokerTicket = null,
+        decimal? targetPrice = null)
     {
+        TargetPrice = targetPrice;
         if (direction == PositionDirection.Flat)
         {
             throw new DomainException("Posição precisa ser comprada ou vendida.");
@@ -84,6 +86,9 @@ public sealed class PaperPosition
     public decimal EntryPrice { get; private set; }
 
     public decimal? Stop { get; private set; }
+
+    /// <summary>Alvo de lucro (preço), quando a estratégia define um.</summary>
+    public decimal? TargetPrice { get; private set; }
 
     public decimal Multiplier { get; private set; }
 
@@ -138,6 +143,9 @@ public sealed class PaperPosition
 
         return tighter;
     }
+
+    public bool IsTargetHit(decimal bid, decimal ask) =>
+        TargetPrice is { } target && (Direction == PositionDirection.Long ? bid > 0 && bid >= target : ask > 0 && ask <= target);
 
     public bool IsStopHit(decimal bid, decimal ask) =>
         Stop is { } stop && (Direction == PositionDirection.Long ? bid > 0 && bid <= stop : ask > 0 && ask >= stop);

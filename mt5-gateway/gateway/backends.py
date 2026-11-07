@@ -210,6 +210,8 @@ class Mt5Backend:
         }
         if order.stop_loss:
             request["sl"] = float(order.stop_loss)
+        if order.take_profit:
+            request["tp"] = float(order.take_profit)
         if order.position_ticket:
             request["position"] = int(order.position_ticket)
 
@@ -343,20 +345,21 @@ class FakeBackend:
     def _check_stops(self) -> None:
         """Simula o stop executado pela corretora."""
         for symbol, position in list(self._positions.items()):
-            stop = position.get("stopLoss")
-            if not stop:
-                continue
             last = self._last(symbol)
-            hit = last <= stop if position["side"] == "buy" else last >= stop
-            if hit:
+            is_buy = position["side"] == "buy"
+            stop, target = position.get("stopLoss"), position.get("takeProfit")
+            if stop and (last <= stop if is_buy else last >= stop):
                 self._closed[position["ticket"]] = stop
+                del self._positions[symbol]
+            elif target and (last >= target if is_buy else last <= target):
+                self._closed[position["ticket"]] = target
                 del self._positions[symbol]
 
     def positions(self) -> list[dict]:
         from .orders import MAGIC
 
         self._check_stops()
-        return [{**p, "profit": 0.0, "magic": MAGIC} for p in self._positions.values()]
+        return [{**{k: v for k, v in p.items() if k != "takeProfit"}, "profit": 0.0, "magic": MAGIC} for p in self._positions.values()]
 
     def send_order(self, order) -> dict:
         self._check_stops()
@@ -366,7 +369,8 @@ class FakeBackend:
         if current is None:
             self._next_ticket += 1
             self._positions[order.symbol] = {"ticket": self._next_ticket, "symbol": order.symbol, "side": order.side,
-                                             "volume": order.volume, "price": price, "stopLoss": order.stop_loss}
+                                             "volume": order.volume, "price": price, "stopLoss": order.stop_loss,
+                                             "takeProfit": order.take_profit}
             ticket = self._next_ticket
         elif current["side"] == order.side:
             current["volume"] += order.volume

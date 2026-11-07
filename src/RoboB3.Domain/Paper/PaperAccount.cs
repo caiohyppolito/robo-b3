@@ -92,7 +92,8 @@ public sealed class PaperAccount
         FeatureVector? features,
         double? probability,
         DateTimeOffset time,
-        long? brokerTicket = null)
+        long? brokerTicket = null,
+        decimal? target = null)
     {
         ArgumentNullException.ThrowIfNull(instrument);
         ArgumentNullException.ThrowIfNull(costs);
@@ -101,7 +102,7 @@ public sealed class PaperAccount
         var cost = costs.OrderCost(price * quantity * instrument.Multiplier, quantity, instrument.IsFuture);
 
         var position = new PaperPosition(assignmentId, instrument.Symbol, contractSymbol, strategyKey, direction, quantity, price, stop,
-            instrument.Multiplier, instrument.IsFuture, cost, features, probability, time, Mode, brokerTicket);
+            instrument.Multiplier, instrument.IsFuture, cost, features, probability, time, Mode, brokerTicket, target);
         Cash -= cost;
         CostsPaid += cost;
 

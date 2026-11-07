@@ -30,7 +30,7 @@ public class StrategyCatalogTests
     {
         var definition = StrategyCatalog.Get(StrategyKeys.SmaCross);
 
-        Assert.Equal(3 * 2 * 2, definition.Grid().Count());
+        Assert.Equal(3 * 2 * 2 * 2, definition.Grid().Count());
         Assert.Single(StrategyCatalog.Get(StrategyKeys.BuyAndHold).Grid());
     }
 

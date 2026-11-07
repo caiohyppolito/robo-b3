@@ -81,7 +81,7 @@ public class BacktestIntegrationTests
     public async Task Comparacao_avalia_todas_as_estrategias_fora_da_amostra()
     {
         await using var db = await SeededContextAsync();
-        var comparison = new StrategyComparisonService(new AssetRepository(db), Service(db));
+        var comparison = new StrategyComparisonService(new AssetRepository(db), Service(db), new ExperimentRepository(db), db, Clock);
         var request = new ComparisonRequest(["PETR4", "VALE3", "ITUB4"], new DateOnly(2024, 6, 1), null, new SimulationSettings());
 
         var result = await comparison.CompareAsync(request, CancellationToken.None);

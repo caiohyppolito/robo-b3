@@ -13,7 +13,12 @@ namespace RoboB3.Application.Backtesting;
 /// (dentro da amostra) e mede o resultado na parte final, que a otimização nunca viu (fora da amostra).
 /// Assim evitamos premiar o ajuste excessivo ao passado.
 /// </summary>
-public sealed class StrategyComparisonService(IAssetRepository assets, BacktestService backtests)
+public sealed class StrategyComparisonService(
+    IAssetRepository assets,
+    BacktestService backtests,
+    IExperimentRepository experiments,
+    IUnitOfWork unitOfWork,
+    TimeProvider clock)
 {
     /// <summary>Mínimo de operações dentro da amostra para um conjunto de parâmetros ser considerado.</summary>
     public const int MinInSampleTrades = 3;
@@ -77,13 +82,29 @@ public sealed class StrategyComparisonService(IAssetRepository assets, BacktestS
         skipped.AddRange(errors.Order());
         var ordered = rows.OrderBy(r => r.Symbol).ThenBy(r => r.StrategyKey).ToList();
         var reference = series[0];
+        var ranking = Rank(ordered);
+
+        // Cada combinação da grade em cada ativo, mais a avaliação fora da amostra: tudo conta como tentativa.
+        var trials = series.Count * StrategyCatalog.All.Sum(d => d.Grid().Count() + 1);
+        var experiment = new ResearchExperiment(
+            "comparacao-estrategias",
+            $"{series.Count} ativos, {reference.Bars[reference.Start].Date:dd/MM/yyyy} a {reference.Bars[^1].Date:dd/MM/yyyy}, {request.InSamplePercent}% dentro da amostra",
+            trials,
+            System.Text.Json.JsonSerializer.Serialize(ranking),
+            CodeVersion.Current,
+            clock.GetUtcNow());
+        experiments.Add(experiment);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
         return new ComparisonResult(
             reference.Bars[reference.Start].Date,
             reference.Bars[reference.Split].Date,
             reference.Bars[^1].Date,
-            Rank(ordered),
+            ranking,
             ordered,
-            skipped);
+            skipped,
+            trials,
+            experiment.Id);
     }
 
     private static ComparisonRow Evaluate(

@@ -8,6 +8,7 @@ public static class StrategyKeys
     public const string SmaCross = "sma-cross";
     public const string DonchianBreakout = "donchian-breakout";
     public const string RsiMeanReversion = "rsi-mean-reversion";
+    public const string EmaVwap = "ema-vwap";
 }
 
 public sealed record StrategyDefinition(
@@ -81,8 +82,9 @@ public static class StrategyCatalog
                 new("fast", "Média rápida (dias)", 20, 2, 100, [10, 20, 50]),
                 new("slow", "Média lenta (dias)", 100, 10, 300, [100, 200]),
                 new("atrStop", "Stop (múltiplos de ATR)", 3, 0.5m, 10, [2, 3]),
+                new("adxMin", "ADX mínimo para entrar (0 = sem filtro)", 0, 0, 60, [0, 25]),
             ],
-            p => new SmaCrossStrategy(p.GetInt("fast"), p.GetInt("slow"), p.Get("atrStop"))),
+            p => new SmaCrossStrategy(p.GetInt("fast"), p.GetInt("slow"), p.Get("atrStop"), p.Get("adxMin"))),
         new(
             StrategyKeys.DonchianBreakout,
             "Rompimento de canal",
@@ -91,8 +93,9 @@ public static class StrategyCatalog
                 new("entry", "Canal de entrada (dias)", 55, 5, 250, [20, 55]),
                 new("exit", "Canal de saída (dias)", 20, 2, 100, [10, 20]),
                 new("atrStop", "Stop (múltiplos de ATR)", 2, 0.5m, 10, [2, 3]),
+                new("adxMin", "ADX mínimo para entrar (0 = sem filtro)", 0, 0, 60, [0, 25]),
             ],
-            p => new DonchianBreakoutStrategy(p.GetInt("entry"), p.GetInt("exit"), p.Get("atrStop"))),
+            p => new DonchianBreakoutStrategy(p.GetInt("entry"), p.GetInt("exit"), p.Get("atrStop"), p.Get("adxMin"))),
         new(
             StrategyKeys.RsiMeanReversion,
             "Reversão à média (RSI)",
@@ -104,6 +107,19 @@ public static class StrategyCatalog
                 new("maxBars", "Máximo de dias na posição", 10, 1, 60, [10]),
             ],
             p => new RsiMeanReversionStrategy(p.GetInt("rsiPeriod"), p.Get("entryLevel"), p.GetInt("trend"), p.GetInt("maxBars"))),
+        new(
+            StrategyKeys.EmaVwap,
+            "EMA × SMA com VWAP (intradiário)",
+            "WIN em 5 min: cruzamento da EMA rápida sobre a SMA lenta confirmado pela VWAP do dia; stop e alvo fixos em pontos. Use com day trade.",
+            [
+                new("fast", "EMA rápida (barras)", 9, 2, 50, [9]),
+                new("slow", "SMA lenta (barras)", 21, 5, 100, [21, 34]),
+                new("stopPoints", "Stop (pontos)", 100, 5, 2000, [100, 150]),
+                new("targetPoints", "Alvo (pontos)", 200, 5, 5000, [200, 300]),
+                new("startHhmm", "Entradas a partir de (HHMM)", 915, 900, 1800, [915]),
+                new("endHhmm", "Entradas até (HHMM)", 1700, 900, 1800, [1700]),
+            ],
+            p => new EmaVwapStrategy(p.GetInt("fast"), p.GetInt("slow"), p.Get("stopPoints"), p.Get("targetPoints"), p.GetInt("startHhmm"), p.GetInt("endHhmm"))),
     ];
 
     public static StrategyDefinition Get(string key) =>

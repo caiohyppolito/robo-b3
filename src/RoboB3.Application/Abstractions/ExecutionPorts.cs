@@ -12,7 +12,8 @@ public sealed record OrderInstruction(
     decimal? StopLoss,
     long? PositionTicket,
     string ClientOrderId,
-    string Reason);
+    string Reason,
+    decimal? TakeProfit = null);
 
 public sealed record OrderResult(bool Filled, decimal Price, int Quantity, long? BrokerTicket, string Message);
 

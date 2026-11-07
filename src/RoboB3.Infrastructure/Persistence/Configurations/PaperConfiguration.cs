@@ -83,7 +83,7 @@ internal sealed class PaperPositionConfiguration : IEntityTypeConfiguration<Pape
         {
             nameof(PaperPosition.EntryPrice), nameof(PaperPosition.Stop), nameof(PaperPosition.Multiplier),
             nameof(PaperPosition.EntryCost), nameof(PaperPosition.MarkPrice),
-            nameof(PaperPosition.MaxFavorable), nameof(PaperPosition.MaxAdverse),
+            nameof(PaperPosition.MaxFavorable), nameof(PaperPosition.MaxAdverse), nameof(PaperPosition.TargetPrice),
         })
         {
             builder.Property(name).HasPrecision(18, 6);

@@ -9,6 +9,13 @@ public interface ITradingLock
     Task<IAsyncDisposable?> TryAcquireAsync(TimeSpan wait, CancellationToken cancellationToken);
 }
 
+public interface IExperimentRepository
+{
+    void Add(Domain.Backtesting.ResearchExperiment experiment);
+
+    Task<IReadOnlyList<Domain.Backtesting.ResearchExperiment>> ListRecentAsync(int count, CancellationToken cancellationToken);
+}
+
 public interface IOrderIntentRepository
 {
     void Add(OrderIntent intent);

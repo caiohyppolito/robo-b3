@@ -15,6 +15,8 @@ export function ComparisonView({ result, strategies }: { result: ComparisonResul
       <p className="muted small">
         Parâmetros escolhidos de {formatDate(result.inSampleFrom)} a {formatDate(result.outOfSampleFrom)} (dentro da amostra) e
         avaliados de {formatDate(result.outOfSampleFrom)} a {formatDate(result.outOfSampleTo)}, período que a otimização não viu.
+        {result.trialsEvaluated > 0 &&
+          ` Foram ${result.trialsEvaluated} simulações nesta pesquisa: quanto mais tentativas, maior a chance de o melhor resultado ser sorte.`}
       </p>
       {best && (
         <p className="callout">

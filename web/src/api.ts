@@ -193,6 +193,13 @@ export interface Metrics {
   benchmarkMaxDrawdownPercent: number;
   riskFreeReturnPercent: number;
   signalsFiltered: number;
+  sortino: number;
+  calmar: number;
+  cVaR95Percent: number;
+  expectancyPerTrade: number;
+  expectancyMargin95: number;
+  turnoverPerYear: number;
+  ambiguousTrades: number;
 }
 
 export interface BacktestSummary {
@@ -270,6 +277,8 @@ export interface ComparisonResult {
   ranking: StrategyRanking[];
   rows: ComparisonRow[];
   skipped: string[];
+  trialsEvaluated: number;
+  experimentId?: string;
 }
 
 export interface RunBacktestRequest {

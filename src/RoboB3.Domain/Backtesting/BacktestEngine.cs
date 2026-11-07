@@ -313,7 +313,8 @@ public sealed class BacktestEngine
         }
 
         var close = history.Current.Close;
-        _pending = new PendingOrder(target, signal.StopPrice is { } s ? Math.Abs(close - s) : null, features, probability);
+        _pending = new PendingOrder(target, signal.StopPrice is { } s ? Math.Abs(close - s) : null, features, probability,
+            signal.TargetPrice is { } t ? Math.Abs(t - close) : null);
     }
 
     private void ExecutePending(Bar bar)
@@ -366,27 +367,39 @@ public sealed class BacktestEngine
         decimal? stop = order.StopDistance is { } distance ? price - ((int)order.Target * distance) : null;
         _position = new Position(order.Target, bar.Date, price, quantity, stop, cost)
         {
+            TargetPrice = order.TargetDistance is { } td ? price + ((int)order.Target * td) : null,
             EntryTime = bar.Time,
             Features = order.Features,
             Probability = order.Probability,
         };
     }
 
+    /// <summary>
+    /// Stop e alvo dentro da barra. Sem dados intrabarra não dá para saber o que veio primeiro: se os dois
+    /// cabem na mesma barra, vale o STOP (premissa conservadora) e a operação fica marcada como ambígua.
+    /// Gaps executam na abertura; o alvo nunca executa melhor que o próprio preço, salvo em gap a favor.
+    /// </summary>
     private void CheckStop(Bar bar)
     {
-        if (_position?.Stop is not { } stop)
+        if (_position is null)
         {
             return;
         }
 
-        if (_position.Direction == PositionDirection.Long && bar.Low <= stop)
+        var isLong = _position.Direction == PositionDirection.Long;
+        var stopHit = _position.Stop is { } stop && (isLong ? bar.Low <= stop : bar.High >= stop);
+        var targetHit = _position.TargetPrice is { } target && (isLong ? bar.High >= target : bar.Low <= target);
+
+        if (stopHit)
         {
-            // Se abriu abaixo do stop (gap), a execução é na abertura.
-            ClosePosition(Math.Min(bar.Open, stop), bar, "stop");
+            var stopPrice = _position.Stop!.Value;
+            _position.Ambiguous = targetHit;
+            ClosePosition(isLong ? Math.Min(bar.Open, stopPrice) : Math.Max(bar.Open, stopPrice), bar, targetHit ? "stop (barra ambígua)" : "stop");
         }
-        else if (_position.Direction == PositionDirection.Short && bar.High >= stop)
+        else if (targetHit)
         {
-            ClosePosition(Math.Max(bar.Open, stop), bar, "stop");
+            var targetPrice = _position.TargetPrice!.Value;
+            ClosePosition(isLong ? Math.Max(bar.Open, targetPrice) : Math.Min(bar.Open, targetPrice), bar, "alvo");
         }
     }
 
@@ -424,7 +437,8 @@ public sealed class BacktestEngine
             position.EntryTime,
             bar.Time,
             Math.Round(position.MaxAdverse / position.EntryPrice * 100m, 3),
-            Math.Round(position.MaxFavorable / position.EntryPrice * 100m, 3)));
+            Math.Round(position.MaxFavorable / position.EntryPrice * 100m, 3),
+            position.Ambiguous));
 
         var saleAmount = (position.Direction == PositionDirection.Long ? price : position.EntryPrice) * position.Quantity * _instrument.Multiplier;
         _monthTrades.Add(new RealizedTrade(date, Categorize(position.EntryDate, date), net, saleAmount));
@@ -467,7 +481,7 @@ public sealed class BacktestEngine
 
     private static int MonthKey(DateOnly date) => (date.Year * 12) + date.Month;
 
-    private sealed record PendingOrder(PositionDirection Target, decimal? StopDistance, FeatureVector? Features, double? Probability);
+    private sealed record PendingOrder(PositionDirection Target, decimal? StopDistance, FeatureVector? Features, double? Probability, decimal? TargetDistance = null);
 
     private sealed class Position(
         PositionDirection direction,
@@ -492,6 +506,10 @@ public sealed class BacktestEngine
         public int BarsHeld { get; set; }
 
         public DateTimeOffset? EntryTime { get; init; }
+
+        public decimal? TargetPrice { get; init; }
+
+        public bool Ambiguous { get; set; }
 
         public decimal MaxFavorable { get; private set; }
 

@@ -56,4 +56,6 @@ public sealed record ComparisonResult(
     DateOnly OutOfSampleTo,
     IReadOnlyList<StrategyRanking> Ranking,
     IReadOnlyList<ComparisonRow> Rows,
-    IReadOnlyList<string> Skipped);
+    IReadOnlyList<string> Skipped,
+    int TrialsEvaluated = 0,
+    Guid? ExperimentId = null);

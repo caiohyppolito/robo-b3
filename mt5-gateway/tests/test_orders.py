@@ -95,3 +95,11 @@ def test_conta_informa_tipo_e_saldo(client):
     account = client.get("/account").json()
     assert account["isDemo"] is True
     assert account["equity"] > 0
+
+
+def test_alvo_da_corretora_encerra_a_posicao(client, prices):
+    opened = client.post("/orders", json=order(stop_loss=129_800, take_profit=130_100)).json()
+
+    prices["WINZ26"] = 130_150.0
+    assert client.get("/positions").json() == []
+    assert client.get(f"/positions/{opened['ticket']}/closing-price").json()["price"] == 130_100.0
