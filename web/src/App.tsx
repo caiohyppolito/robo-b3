@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, session, setUnauthorizedHandler, type Status } from "./api";
 import { AssetsTable } from "./components/AssetsTable";
 import { AuditList } from "./components/AuditList";
+import { BacktestPage } from "./components/backtest/BacktestPage";
 import { Login } from "./components/Login";
 import { RiskLimitsForm } from "./components/RiskLimitsForm";
 import { StatusPanel } from "./components/StatusPanel";
@@ -13,6 +14,7 @@ export function App() {
   const [status, setStatus] = useState<Status | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [page, setPage] = useState<"painel" | "backtest">("painel");
 
   useEffect(() => setUnauthorizedHandler(() => setLoggedIn(false)), []);
 
@@ -39,7 +41,15 @@ export function App() {
     <div className="app">
       <header>
         <h1>Robô B3</h1>
-        <span className="badge">Fase 1 · carteira simulada</span>
+        <nav className="tabs" aria-label="Seções">
+          <button className={page === "painel" ? "active" : ""} onClick={() => setPage("painel")}>
+            Painel
+          </button>
+          <button className={page === "backtest" ? "active" : ""} onClick={() => setPage("backtest")}>
+            Backtest
+          </button>
+        </nav>
+        <span className="badge">carteira simulada</span>
         <button
           className="link"
           onClick={() => {
@@ -51,7 +61,11 @@ export function App() {
         </button>
       </header>
       {error && <p className="error banner">{error}</p>}
-      {status ? (
+      {page === "backtest" ? (
+        <main>
+          <BacktestPage />
+        </main>
+      ) : status ? (
         <main>
           <StatusPanel status={status} onChange={refresh} />
           <div className="columns">

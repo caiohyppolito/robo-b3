@@ -47,3 +47,12 @@ public interface IUnitOfWork
 {
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }
+
+public interface IBacktestRunRepository
+{
+    void Add(Domain.Backtesting.BacktestRun run);
+
+    Task<Domain.Backtesting.BacktestRun?> FindAsync(Guid id, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<Domain.Backtesting.BacktestRun>> ListRecentAsync(int count, CancellationToken cancellationToken);
+}

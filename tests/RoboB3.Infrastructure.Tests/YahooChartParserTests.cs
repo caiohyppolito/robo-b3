@@ -20,6 +20,7 @@ public class YahooChartParserTests
         Assert.Equal(32.10m, first.Open);
         Assert.Equal(32.45m, first.Close);
         Assert.Equal(41_234_500, first.Volume);
+        Assert.Equal(31.80m, first.AdjustedClose);
     }
 
     [Fact]

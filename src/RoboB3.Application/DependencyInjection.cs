@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using RoboB3.Application.Backtesting;
 using RoboB3.Application.MarketData;
 using RoboB3.Application.Risk;
 
@@ -13,6 +14,8 @@ public static class DependencyInjection
         services.AddScoped<KillSwitchService>();
         services.AddScoped<RiskSettingsService>();
         services.AddScoped<RiskMonitorService>();
+        services.AddScoped<BacktestService>();
+        services.AddScoped<StrategyComparisonService>();
         return services;
     }
 }

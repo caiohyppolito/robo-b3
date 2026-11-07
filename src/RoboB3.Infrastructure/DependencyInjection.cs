@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using RoboB3.Application.Abstractions;
+using RoboB3.Application.Backtesting;
 using RoboB3.Infrastructure.MarketData;
 using RoboB3.Infrastructure.Persistence;
 using RoboB3.Infrastructure.Persistence.Repositories;
@@ -27,6 +28,7 @@ public static class DependencyInjection
         services.AddScoped<IRiskSettingsRepository, RiskSettingsRepository>();
         services.AddScoped<ITradingStateRepository, TradingStateRepository>();
         services.AddScoped<IAuditLog, AuditLog>();
+        services.AddScoped<IBacktestRunRepository, BacktestRunRepository>();
         services.AddScoped<DatabaseInitializer>();
 
         services.AddOptions<TradingOptions>()
@@ -34,6 +36,10 @@ public static class DependencyInjection
             .ValidateDataAnnotations()
             .ValidateOnStart();
         services.AddScoped<IPortfolioProvider, SimulatedPortfolioProvider>();
+        services.AddOptions<BacktestOptions>()
+            .Bind(configuration.GetSection(BacktestOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
 
         services.AddHttpClient<IMarketDataProvider, YahooFinanceMarketDataProvider>(client =>
             {

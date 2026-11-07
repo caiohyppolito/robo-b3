@@ -39,6 +39,34 @@ As dependências seguem a Clean Architecture: `Domain ← Application ← Infras
 - Ordens que **só reduzem** uma posição (zerar) são sempre aceitas, mesmo com o robô travado.
 - Destravar o robô exige ação humana. Nada destrava sozinho.
 
+## Backtest e comparação de estratégias
+
+Na aba **Backtest** do painel:
+
+- **Rodar backtest:** escolha ativo, estratégia, parâmetros e período. O resultado mostra retorno, drawdown, Sharpe, operações, custos, IR e a curva de patrimônio comparada ao "comprar e segurar" e ao CDI.
+- **Comparar todas as estratégias:** os parâmetros de cada estratégia são escolhidos só com a parte inicial do histórico (70%, *dentro da amostra*) e avaliados na parte final, que a otimização nunca viu (*fora da amostra*). O ranking usa o resultado fora da amostra, o único que importa.
+
+| Estratégia | Ideia |
+|---|---|
+| Comprar e segurar | Referência que toda estratégia precisa vencer |
+| Cruzamento de médias | Tendência: entra no cruzamento da média rápida sobre a lenta; stop móvel em ATRs |
+| Rompimento de canal | Momentum: rompimento da máxima/mínima de N dias (estilo Turtle) |
+| Reversão à média (RSI) | Compra quedas fortes dentro de tendência de alta e sai no repique |
+
+**Como a simulação reproduz o robô real:**
+
+- O sinal é calculado no fechamento e executado na **abertura seguinte**. As estratégias só enxergam o passado: acessar uma barra futura lança erro.
+- Os preços são ajustados por proventos (fechamento ajustado do Yahoo).
+- Cada entrada passa pelo mesmo `RiskManager` do robô. Estourar a perda diária ou o drawdown **bloqueia novas entradas**, e as saídas continuam permitidas.
+- Tamanho da posição pelo risco: perda de no máximo *X%* do patrimônio se o stop for atingido, limitada pela exposição máxima por ativo.
+- O stop considera gaps: se o pregão abre além do stop, a saída é na abertura.
+- Custos configuráveis em `Backtest` no `appsettings.json`: corretagem (Clear: R$ 0), taxas da B3, slippage e taxa por contrato futuro.
+- **IR mensal:** 15% em swing trade, 20% em day trade, isenção para ações com vendas de até R$ 20 mil no mês, compensação de prejuízo e DARF mínimo de R$ 10.
+- O caixa parado rende CDI (taxa em `Backtest:RiskFreeRatePercent`; **ajuste para o CDI atual**). O IR da renda fixa não é descontado.
+- Futuros: WIN rende R$ 0,20 por ponto e WDO R$ 10,00 por ponto, com venda a descoberto permitida. O backtest de WIN/WDO depende dos dados intradiários do MT5 (Fase 4).
+
+> Backtest bom não garante lucro futuro. Desconfie de resultados que só aparecem dentro da amostra.
+
 ## Como rodar no Windows
 
 ### 1. Pré-requisitos
@@ -85,6 +113,13 @@ dotnet test
 cd web; npm run build
 ```
 
+Os testes de integração com SQL Server (migrações, gravação dos backtests) rodam quando a variável `ROBOB3_TEST_SQLSERVER` aponta para um servidor; sem ela, são pulados. O CI sobe um SQL Server em container e roda todos.
+
+```powershell
+$env:ROBOB3_TEST_SQLSERVER = "Server=(localdb)\MSSQLLocalDB;Trusted_Connection=True;TrustServerCertificate=True"
+dotnet test
+```
+
 ## Segurança
 
 - API e banco escutam **apenas em localhost**.
@@ -98,7 +133,7 @@ cd web; npm run build
 ## Roadmap
 
 - [x] **Fase 1, fundação:** solution, banco, API, workers, painel, gestão de risco, kill switch e CI
-- [ ] **Fase 2, estratégias e backtest:** indicadores, estratégias plugáveis, backtest com custos da B3 e IR (15% swing com isenção até R$ 20 mil/mês em vendas de ações; 20% day trade) e relatórios
+- [x] **Fase 2, estratégias e backtest:** indicadores, quatro estratégias, backtest com custos, IR e CDI, comparação com validação fora da amostra e painel com curva de patrimônio
 - [ ] **Fase 3, IA:** diário de trades, meta-modelo (ML.NET) que filtra sinais ruins e retreino walk-forward, promovendo o modelo novo só se ele vencer fora da amostra
 - [ ] **Fase 4, paper trading:** integração com o MetaTrader 5 da Clear (conta demo), dados intradiários de WIN/WDO e carteira simulada
 - [ ] **Fase 5, conta real:** começando com tamanho mínimo e todas as travas ligadas
