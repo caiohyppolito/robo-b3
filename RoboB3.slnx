@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RoboB3.Api/RoboB3.Api.csproj" />
+    <Project Path="src/RoboB3.Application/RoboB3.Application.csproj" />
+    <Project Path="src/RoboB3.Domain/RoboB3.Domain.csproj" />
+    <Project Path="src/RoboB3.Infrastructure/RoboB3.Infrastructure.csproj" />
+    <Project Path="src/RoboB3.Workers/RoboB3.Workers.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RoboB3.Application.Tests/RoboB3.Application.Tests.csproj" />
+    <Project Path="tests/RoboB3.Domain.Tests/RoboB3.Domain.Tests.csproj" />
+    <Project Path="tests/RoboB3.Infrastructure.Tests/RoboB3.Infrastructure.Tests.csproj" />
+  </Folder>
+</Solution>

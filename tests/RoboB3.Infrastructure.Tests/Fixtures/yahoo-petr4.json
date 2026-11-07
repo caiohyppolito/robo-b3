@@ -1,0 +1,1 @@
+{"chart":{"result":[{"meta":{"currency":"BRL","symbol":"PETR4.SA","gmtoffset":-10800,"timezone":"BRT"},"timestamp":[1793970000,1794229200,1794315600],"indicators":{"quote":[{"open":[32.10,32.50,null],"high":[32.80,33.00,null],"low":[31.90,32.20,null],"close":[32.45,32.95,null],"volume":[41234500,38123400,null]}],"adjclose":[{"adjclose":[32.45,32.95,null]}]}}],"error":null}}

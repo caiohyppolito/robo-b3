@@ -1,0 +1,17 @@
+# Alternativa ao SQL Server Express/LocalDB: SQL Server 2022 em container.
+# Uso: copie .env.example para .env, ajuste a senha e rode "docker compose up -d".
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: robo-b3-sql
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Defina MSSQL_SA_PASSWORD no arquivo .env}
+    ports:
+      - "127.0.0.1:1433:1433"
+    volumes:
+      - robo-b3-sql:/var/opt/mssql
+    restart: unless-stopped
+
+volumes:
+  robo-b3-sql:
