@@ -91,6 +91,17 @@ public static class DependencyInjection
                 }
             })
             .AddStandardResilienceHandler();
+        services.AddOptions<Application.Notifications.TelegramOptions>()
+            .Bind(configuration.GetSection(Application.Notifications.TelegramOptions.SectionName));
+
+        // Sem logs de requisição (a URL carrega o token) e sem retry automático (evita mensagens e comandos duplicados).
+        services.AddHttpClient<Application.Notifications.ITelegramClient, Notifications.TelegramBotClient>(client =>
+            {
+                client.BaseAddress = new Uri("https://api.telegram.org/");
+                client.Timeout = TimeSpan.FromSeconds(60);
+            })
+            .RemoveAllLoggers();
+
         services.AddOptions<BacktestOptions>()
             .Bind(configuration.GetSection(BacktestOptions.SectionName))
             .ValidateDataAnnotations()

@@ -3,6 +3,7 @@ using RoboB3.Application.Backtesting;
 using RoboB3.Application.Execution;
 using RoboB3.Application.Learning;
 using RoboB3.Application.MarketData;
+using RoboB3.Application.Notifications;
 using RoboB3.Application.Paper;
 using RoboB3.Application.Risk;
 
@@ -26,6 +27,10 @@ public static class DependencyInjection
         services.AddScoped<MarketWatchService>();
         services.AddSingleton<SimulatedOrderExecutor>();
         services.AddScoped<StrategyComparisonService>();
+        services.AddSingleton<TelegramConfirmations>();
+        services.AddSingleton<TelegramNotificationCursor>();
+        services.AddScoped<TelegramCommandService>();
+        services.AddScoped<TelegramNotificationService>();
         return services;
     }
 }

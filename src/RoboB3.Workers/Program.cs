@@ -23,5 +23,7 @@ builder.Services.AddHostedService<RiskMonitorWorker>();
 builder.Services.AddHostedService<LearningWorker>();
 builder.Services.AddHostedService<PaperTradingWorker>();
 builder.Services.AddHostedService<IntradayDataWorker>();
+builder.Services.AddHostedService<TelegramNotificationWorker>();
+builder.Services.AddHostedService<TelegramCommandWorker>();
 
 await builder.Build().RunAsync();
