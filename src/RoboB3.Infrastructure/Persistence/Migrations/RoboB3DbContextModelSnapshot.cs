@@ -395,6 +395,12 @@ namespace RoboB3.Infrastructure.Persistence.Migrations
                         .HasPrecision(10, 4)
                         .HasColumnType("decimal(10,4)");
 
+                    b.Property<string>("Baseline")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Calibration")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<decimal?>("ChampionSharpe")
                         .HasPrecision(10, 4)
                         .HasColumnType("decimal(10,4)");

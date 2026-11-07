@@ -46,7 +46,7 @@ internal sealed class Mt5OrderExecutor(HttpClient http, ExecutionMode mode) : IO
 
             var result = await response.Content.ReadFromJsonAsync<OrderResultDto>(Json, cancellationToken)
                 ?? throw new JsonException("Resposta vazia.");
-            return new OrderResult(result.Filled, result.Price ?? 0, result.Volume ?? 0, result.Ticket, result.Message ?? string.Empty);
+            return new OrderResult(result.Filled, result.Price ?? 0, result.Volume ?? 0, result.Ticket, result.Message ?? string.Empty, result.StopConfirmed);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
         {
@@ -110,7 +110,8 @@ internal sealed class Mt5OrderExecutor(HttpClient http, ExecutionMode mode) : IO
         string Comment,
         [property: JsonPropertyName("take_profit")] decimal? TakeProfit = null);
 
-    internal sealed record OrderResultDto(bool Filled, decimal? Price, int? Volume, long? Ticket, string? Message);
+    internal sealed record OrderResultDto(bool Filled, decimal? Price, int? Volume, long? Ticket, string? Message,
+        [property: JsonPropertyName("stop_confirmed")] bool? StopConfirmed = null);
 
     internal sealed record StopResultDto(bool Ok, string? Message);
 

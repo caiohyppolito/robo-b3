@@ -15,7 +15,8 @@ public sealed record OrderInstruction(
     string Reason,
     decimal? TakeProfit = null);
 
-public sealed record OrderResult(bool Filled, decimal Price, int Quantity, long? BrokerTicket, string Message);
+/// <param name="StopConfirmed">Na corretora: o stop ficou registrado na posição? Nulo quando não se aplica (simulação, saída, sem stop).</param>
+public sealed record OrderResult(bool Filled, decimal Price, int Quantity, long? BrokerTicket, string Message, bool? StopConfirmed = null);
 
 public sealed record BrokerPosition(long Ticket, string Symbol, OrderSide Side, int Volume, decimal Price, decimal? StopLoss, bool IsRobot);
 

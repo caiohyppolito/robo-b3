@@ -103,3 +103,27 @@ def test_alvo_da_corretora_encerra_a_posicao(client, prices):
     prices["WINZ26"] = 130_150.0
     assert client.get("/positions").json() == []
     assert client.get(f"/positions/{opened['ticket']}/closing-price").json()["price"] == 130_100.0
+
+
+def test_stop_confirmado_quando_fica_na_posicao(client):
+    result = client.post("/orders", json=order(stop_loss=129_800)).json()
+
+    assert result["stop_confirmed"] is True
+
+
+def test_corretora_que_ignora_o_stop_e_avisada(prices):
+    backend = FakeBackend(clock=lambda: NOW, price_override=lambda symbol: prices[symbol], drop_stops=True)
+    app = create_app(Settings(token=TOKEN, fake=True, orders="demo"), backend)
+    client = TestClient(app, headers={"X-Gateway-Token": TOKEN})
+
+    result = client.post("/orders", json=order(stop_loss=129_800)).json()
+
+    assert result["filled"] is True
+    assert result["stop_confirmed"] is False
+
+
+def test_saida_nao_precisa_de_confirmacao_de_stop(client):
+    opened = client.post("/orders", json=order(stop_loss=129_800)).json()
+    closed = client.post("/orders", json=order(side="sell", client_id="pedido-0002", position_ticket=opened["ticket"])).json()
+
+    assert closed["stop_confirmed"] is None

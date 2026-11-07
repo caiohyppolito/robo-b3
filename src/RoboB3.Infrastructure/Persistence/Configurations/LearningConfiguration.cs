@@ -39,6 +39,23 @@ internal sealed class MetaModelConfiguration : IEntityTypeConfiguration<MetaMode
                 v => JsonSerializer.Serialize(v, Json).GetHashCode(StringComparison.Ordinal),
                 v => new Dictionary<string, double>(v)));
 
+        builder.Property(m => m.Calibration).HasConversion(
+            new ValueConverter<CalibrationReport?, string?>(
+                v => v == null ? null : JsonSerializer.Serialize(v, Json),
+                v => v == null ? null : JsonSerializer.Deserialize<CalibrationReport>(v, Json)),
+            new ValueComparer<CalibrationReport?>(
+                (a, b) => JsonSerializer.Serialize(a, Json) == JsonSerializer.Serialize(b, Json),
+                v => JsonSerializer.Serialize(v, Json).GetHashCode(StringComparison.Ordinal),
+                v => v));
+        builder.Property(m => m.Baseline).HasConversion(
+            new ValueConverter<FeatureBaseline?, string?>(
+                v => v == null ? null : JsonSerializer.Serialize(v, Json),
+                v => v == null ? null : JsonSerializer.Deserialize<FeatureBaseline>(v, Json)),
+            new ValueComparer<FeatureBaseline?>(
+                (a, b) => JsonSerializer.Serialize(a, Json) == JsonSerializer.Serialize(b, Json),
+                v => JsonSerializer.Serialize(v, Json).GetHashCode(StringComparison.Ordinal),
+                v => v));
+
         // No máximo um modelo ativo por estratégia.
         builder.HasIndex(m => m.StrategyKey).IsUnique().HasFilter("[Status] = 'Active'");
         builder.HasIndex(m => m.CreatedAt);

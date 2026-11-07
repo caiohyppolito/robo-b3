@@ -60,6 +60,12 @@ public sealed class StrategyAssignment
         var definition = StrategyCatalog.Get(strategyKey);
         Parameters = new Dictionary<string, decimal>(definition.Normalize(parameters).Values);
         StrategyKey = definition.Key;
+        if (useMetaModel && timeframe != Timeframe.D1)
+        {
+            // O modelo é treinado com variáveis de barras diárias; aplicá-lo a barras de minutos daria notas sem sentido.
+            throw new DomainException("O filtro da IA só vale para barras diárias (D1): o modelo é treinado com dados diários.");
+        }
+
         Timeframe = timeframe;
         UseMetaModel = useMetaModel;
         FlattenAtDayEnd = flattenAtDayEnd;

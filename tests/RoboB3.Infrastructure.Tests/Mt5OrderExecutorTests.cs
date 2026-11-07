@@ -38,7 +38,7 @@ public class Mt5OrderExecutorTests
     public async Task Ordem_segue_o_contrato_do_conector()
     {
         var (executor, recorder) = Create(ExecutionMode.Mt5Demo, HttpStatusCode.OK,
-            """{"filled":true,"price":130010.0,"volume":2,"ticket":501,"message":"Executada."}""");
+            """{"filled":true,"price":130010.0,"volume":2,"ticket":501,"message":"Executada.","stop_confirmed":true}""");
 
         var result = await executor.SendAsync(
             new OrderInstruction("WINZ26", OrderSide.Buy, 2, 130_005m, 129_800m, null, "e-123456789", "entrada donchian-breakout", TakeProfit: 130_400m),
@@ -60,6 +60,7 @@ public class Mt5OrderExecutorTests
         Assert.True(result.Filled);
         Assert.Equal(130_010m, result.Price);
         Assert.Equal(501, result.BrokerTicket);
+        Assert.True(result.StopConfirmed);
     }
 
     [Fact]

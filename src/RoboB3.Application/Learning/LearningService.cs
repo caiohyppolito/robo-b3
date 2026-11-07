@@ -81,6 +81,8 @@ public sealed partial class LearningService(
         var probabilities = validation.Select(e => candidate.Predict(e.Features)).ToList();
         var report = ValidationReport.Calculate(validation, probabilities, options.Threshold);
         var importance = FeatureImportance(candidate, validation, report.Auc);
+        var calibration = CalibrationReport.Calculate(validation.Select(e => e.IsWin).ToList(), probabilities);
+        var baseline = FeatureBaseline.FromVectors(training.Select(e => e.Features).ToList());
 
         var champion = await models.GetActiveAsync(definition.Key, cancellationToken);
         var economics = await EconomicTestAsync(definition, series, splitDate, candidate, champion, cancellationToken);
@@ -98,6 +100,7 @@ public sealed partial class LearningService(
 
         var model = new MetaModel(definition.Key, now, trainingFrom, splitDate, validationTo, training.Count,
             options.Threshold, report, economics, importance, bytes);
+        model.SetDiagnostics(calibration, baseline);
         models.Add(model);
 
         if (decision.PromoteCandidate)
@@ -140,6 +143,59 @@ public sealed partial class LearningService(
         var text = await analyst.AnalyzeAsync(new ModelAnalysisInput(model, definition.Name, definition.Description, worst), cancellationToken);
         model.SetAnalysis(text);
         audit.Record(new AuditEntry("ia.analise", Actor, $"{model.StrategyKey} {model.Id}", clock.GetUtcNow()));
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return model;
+    }
+
+    /// <summary>
+    /// Compara as variáveis que o robô está vendo agora (registro de decisões, barras diárias) com as do treino do modelo.
+    /// Só informa e registra na auditoria quando a mudança é forte; nunca troca nem desliga o modelo sozinho.
+    /// </summary>
+    public async Task<DriftReport> CheckDriftAsync(Guid modelId, IPaperRepository decisions, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(decisions);
+        var model = await models.FindAsync(modelId, cancellationToken) ?? throw new DomainException("Modelo não encontrado.");
+        if (model.Baseline is null)
+        {
+            return new DriftReport(0, DriftLevel.InsufficientData, 0, []);
+        }
+
+        var recent = (await decisions.ListRecentDailyFeaturesAsync(model.StrategyKey, 200, cancellationToken))
+            .Select(f => new FeatureVector(f))
+            .ToList();
+        var report = DriftReport.Compute(model.Baseline, recent);
+        if (report.Level == DriftLevel.Strong && model.Status == MetaModelStatus.Active)
+        {
+            var top = string.Join(", ", report.Features.Take(3).Select(f => $"{f.Name} {f.Psi:F2}"));
+            audit.Record(new AuditEntry("ia.drift", Actor, $"{model.StrategyKey} {model.Id}: mudança forte de regime ({top}). Considere retreinar.", clock.GetUtcNow()));
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+
+        return report;
+    }
+
+    /// <summary>
+    /// Volta para um modelo aposentado (rollback), por decisão humana. O modelo ativo da estratégia, se houver, é aposentado.
+    /// </summary>
+    public async Task<MetaModel> ReactivateAsync(Guid modelId, string actor, CancellationToken cancellationToken)
+    {
+        var model = await models.FindAsync(modelId, cancellationToken) ?? throw new DomainException("Modelo não encontrado.");
+        if (model.Status != MetaModelStatus.Retired || model.ActivatedAt is null)
+        {
+            throw new DomainException("Só um modelo já promovido e depois aposentado pode ser reativado.");
+        }
+
+        var now = clock.GetUtcNow();
+        var current = await models.GetActiveAsync(model.StrategyKey, cancellationToken);
+        if (current is not null)
+        {
+            current.Retire($"substituído pela reativação de {model.Id} por {actor}.", now);
+            audit.Record(new AuditEntry("ia.modelo-aposentado", actor, $"{current.StrategyKey} {current.Id}", now));
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+
+        model.Reactivate(actor, now);
+        audit.Record(new AuditEntry("ia.modelo-reativado", actor, $"{model.StrategyKey} {model.Id}", now));
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return model;
     }

@@ -1,3 +1,5 @@
+using RoboB3.Domain.MarketData;
+using RoboB3.Domain.Paper;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -133,5 +135,67 @@ public class LearningIntegrationTests
         Assert.Contains("- rsi_14: 0.0500", prompt, StringComparison.Ordinal);
         Assert.Contains("PETR4 2025-11-08 a 2025-11-13: -6.5%", prompt, StringComparison.Ordinal);
         Assert.True(prompt.IndexOf("rsi_14", StringComparison.Ordinal) < prompt.IndexOf("volume_relativo", StringComparison.Ordinal));
+    }
+}
+
+public class ModelLifecycleTests
+{
+    private static readonly DateOnly Day = new(2025, 1, 2);
+
+    private static MetaModel Promoted(string strategy, FeatureBaseline? baseline = null)
+    {
+        var model = new MetaModel(strategy, DateTimeOffset.UnixEpoch, Day, Day, Day, 10, 0.5,
+            new ValidationReport(20, 0.6, 50, 55, 0, 0, 60), new EconomicTest(0.2m, 0.4m, null), new Dictionary<string, double>(), [1, 2, 3]);
+        if (baseline is not null)
+        {
+            model.SetDiagnostics(CalibrationReport.Calculate([true, false], [0.7, 0.4]), baseline);
+        }
+
+        model.Activate("promovido", DateTimeOffset.UnixEpoch);
+        return model;
+    }
+
+    [Fact]
+    public async Task Reativar_modelo_aposentado_aposenta_o_atual_e_audita()
+    {
+        await using var db = new RoboB3DbContext(new DbContextOptionsBuilder<RoboB3DbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        var old = Promoted("sma-cross");
+        old.Retire("substituído", DateTimeOffset.UnixEpoch);
+        var current = Promoted("sma-cross");
+        db.MetaModels.AddRange(old, current);
+        await db.SaveChangesAsync();
+
+        await LearningIntegrationTests.Service(db).ReactivateAsync(old.Id, "caio", CancellationToken.None);
+
+        Assert.Equal(MetaModelStatus.Active, (await db.MetaModels.FindAsync(old.Id))!.Status);
+        Assert.Equal(MetaModelStatus.Retired, (await db.MetaModels.FindAsync(current.Id))!.Status);
+        Assert.True(await db.AuditEntries.AnyAsync(a => a.Action == "ia.modelo-reativado" && a.Actor == "caio"));
+    }
+
+    [Fact]
+    public async Task Drift_forte_so_alerta_e_o_modelo_continua_ativo()
+    {
+        await using var db = new RoboB3DbContext(new DbContextOptionsBuilder<RoboB3DbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        var training = Enumerable.Range(0, 300).Select(i => new FeatureVector(Enumerable.Repeat((i % 100) / 100f, FeatureVector.Count).ToArray())).ToList();
+        var model = Promoted("sma-cross", FeatureBaseline.FromVectors(training));
+        db.MetaModels.Add(model);
+        var assignment = new StrategyAssignment("PETR4", "sma-cross", new Dictionary<string, decimal>(), Timeframe.D1, true, false, DateTimeOffset.UnixEpoch);
+        db.StrategyAssignments.Add(assignment);
+        for (var i = 0; i < 40; i++)
+        {
+            var decision = new TradingDecision(DateTimeOffset.UnixEpoch.AddDays(i), Domain.Execution.ExecutionMode.Paper, assignment.Id, "PETR4", "PETR4", "sma-cross",
+                DateTimeOffset.UnixEpoch.AddDays(i), PositionDirection.Long);
+            decision.SetContext(new Dictionary<string, decimal>(), Enumerable.Repeat(0.99f, FeatureVector.Count).ToArray(), "teste");
+            db.TradingDecisions.Add(decision);
+        }
+
+        await db.SaveChangesAsync();
+
+        var report = await LearningIntegrationTests.Service(db).CheckDriftAsync(model.Id, new PaperRepository(db), CancellationToken.None);
+
+        Assert.Equal(DriftLevel.Strong, report.Level);
+        Assert.Equal(40, report.RecentSamples);
+        Assert.Equal(MetaModelStatus.Active, (await db.MetaModels.FindAsync(model.Id))!.Status);
+        Assert.True(await db.AuditEntries.AnyAsync(a => a.Action == "ia.drift"));
     }
 }

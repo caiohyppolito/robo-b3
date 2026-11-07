@@ -88,6 +88,9 @@ internal sealed class FakeBroker(Domain.Execution.ExecutionMode mode) : IOrderEx
 
     public bool RejectNext { get; set; }
 
+    /// <summary>Simula a corretora que executa a ordem mas não registra o stop.</summary>
+    public bool DropStops { get; set; }
+
     public decimal Equity { get; set; } = 50_000m;
 
     public Task<OrderResult> SendAsync(OrderInstruction instruction, CancellationToken cancellationToken)
@@ -106,9 +109,10 @@ internal sealed class FakeBroker(Domain.Execution.ExecutionMode mode) : IOrderEx
             return Task.FromResult(new OrderResult(true, price, instruction.Quantity, ticket, "Executada."));
         }
 
-        var opened = new BrokerPosition(++_nextTicket, instruction.Symbol, instruction.Side, instruction.Quantity, price, instruction.StopLoss, true);
+        var opened = new BrokerPosition(++_nextTicket, instruction.Symbol, instruction.Side, instruction.Quantity, price, DropStops ? null : instruction.StopLoss, true);
         Positions.Add(opened);
-        return Task.FromResult(new OrderResult(true, price, instruction.Quantity, opened.Ticket, "Executada."));
+        bool? confirmed = instruction.StopLoss is null ? null : !DropStops;
+        return Task.FromResult(new OrderResult(true, price, instruction.Quantity, opened.Ticket, "Executada.", confirmed));
     }
 
     public Task<bool> UpdateStopAsync(string symbol, long ticket, decimal stop, CancellationToken cancellationToken)
@@ -438,6 +442,24 @@ public class PaperTradingTests
         Assert.Equal(130_010m, position.EntryPrice);
         Assert.Equal(50_000m, (await _db.PaperAccounts.SingleAsync()).InitialCapital);
         Assert.Contains(await _db.AuditEntries.ToListAsync(), a => a.Action == "ordem.executada");
+    }
+
+    [Fact]
+    public async Task Stop_nao_registrado_na_corretora_trava_novas_entradas_mas_mantem_a_posicao()
+    {
+        // Alta de 1 ponto por barra com amplitude pequena: o fechamento rompe a máxima do canal.
+        _feed.BarRange = 0.4m;
+        await AssignAsync("WIN", StrategyKeys.DonchianBreakout);
+        _execution.ChangeTo(Domain.Execution.ExecutionMode.Mt5Demo, "teste", _clock.GetUtcNow());
+        _broker.DropStops = true;
+
+        var report = await Service().RunCycleAsync(CancellationToken.None);
+
+        Assert.True(report.Opened == 1, string.Join(" | ", report.Messages));
+        var position = Assert.Single(await _db.PaperPositions.ToListAsync());
+        Assert.NotNull(position.Stop);
+        Assert.True(_state.IsHalted);
+        Assert.Contains("não ficou registrado", _state.HaltReason, StringComparison.Ordinal);
     }
 
     [Fact]

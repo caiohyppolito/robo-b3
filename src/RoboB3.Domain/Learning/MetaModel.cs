@@ -144,5 +144,34 @@ public sealed class MetaModel
         RetiredAt = now;
     }
 
+    /// <summary>Calibração fora da amostra (Brier, ECE e faixas). Nula em modelos antigos.</summary>
+    public CalibrationReport? Calibration { get; private set; }
+
+    /// <summary>Distribuição das variáveis no treino, para medir mudança de regime depois.</summary>
+    public FeatureBaseline? Baseline { get; private set; }
+
+    public void SetDiagnostics(CalibrationReport calibration, FeatureBaseline baseline)
+    {
+        Calibration = calibration ?? throw new ArgumentNullException(nameof(calibration));
+        Baseline = baseline ?? throw new ArgumentNullException(nameof(baseline));
+    }
+
+    /// <summary>
+    /// Volta a usar um modelo aposentado (decisão humana, auditada). Só modelos que já foram promovidos com
+    /// evidência fora da amostra; um modelo rejeitado nunca passa a valer por aqui.
+    /// </summary>
+    public void Reactivate(string actor, DateTimeOffset now)
+    {
+        if (Status != MetaModelStatus.Retired || ActivatedAt is null || ModelBytes is null)
+        {
+            throw new DomainException("Só um modelo já promovido e depois aposentado pode ser reativado.");
+        }
+
+        Status = MetaModelStatus.Active;
+        Decision = $"{Decision} | Reativado por {Guard.NotBlank(actor, nameof(actor))}";
+        ActivatedAt = now;
+        RetiredAt = null;
+    }
+
     public void SetAnalysis(string analysis) => Analysis = Guard.NotBlank(analysis, nameof(analysis));
 }

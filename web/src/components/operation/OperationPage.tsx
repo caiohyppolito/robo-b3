@@ -377,7 +377,7 @@ function AssignmentForm({
     event.preventDefault();
     const definition = strategies.find((s) => s.key === strategy);
     const parameters = Object.fromEntries((definition?.parameters ?? []).map((p) => [p.name, p.default]));
-    void onSubmit({ symbol, strategy, parameters, timeframe, useMetaModel, flattenAtDayEnd: timeframe !== "D1" && flattenAtDayEnd });
+    void onSubmit({ symbol, strategy, parameters, timeframe, useMetaModel: timeframe === "D1" && useMetaModel, flattenAtDayEnd: timeframe !== "D1" && flattenAtDayEnd });
   }
 
   return (
@@ -419,8 +419,8 @@ function AssignmentForm({
           Day trade (zera no fim do pregão)
         </label>
         <label className="checkbox">
-          <input type="checkbox" checked={useMetaModel} onChange={(e) => setUseMetaModel(e.target.checked)} />
-          Usar o filtro da IA (se houver modelo ativo)
+          <input type="checkbox" checked={useMetaModel && timeframe === "D1"} disabled={timeframe !== "D1"} onChange={(e) => setUseMetaModel(e.target.checked)} />
+          Usar o filtro da IA (se houver modelo ativo; só em barras diárias, que é como ele é treinado)
         </label>
       </div>
       <p className="muted small">Parâmetros padrão da estratégia; ajuste depois de validar no backtest.</p>

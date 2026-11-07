@@ -1,3 +1,4 @@
+using RoboB3.Api.Infrastructure;
 using RoboB3.Application.Abstractions;
 using RoboB3.Application.Learning;
 using RoboB3.Domain.Learning;
@@ -30,13 +31,14 @@ public sealed record MetaModelDto(
     IReadOnlyDictionary<string, double> FeatureImportance,
     DateTimeOffset? ActivatedAt,
     DateTimeOffset? RetiredAt,
-    string? Analysis)
+    string? Analysis,
+    CalibrationReport? Calibration)
 {
     public static MetaModelDto From(MetaModel m) => new(
         m.Id, m.StrategyKey, m.CreatedAt, m.Status, m.Decision, m.TrainingFrom, m.SplitDate, m.ValidationTo,
         m.TrainingExamples, m.ValidationExamples, m.Threshold, m.Auc, m.BaseWinRatePercent, m.FilteredWinRatePercent,
         m.BaseAverageReturnPercent, m.FilteredAverageReturnPercent, m.KeptPercent, m.UnfilteredSharpe, m.FilteredSharpe,
-        m.ChampionSharpe, m.FeatureImportance, m.ActivatedAt, m.RetiredAt, m.Analysis);
+        m.ChampionSharpe, m.FeatureImportance, m.ActivatedAt, m.RetiredAt, m.Analysis, m.Calibration);
 }
 
 public sealed record JournalEntryDto(
@@ -72,6 +74,12 @@ internal static class LearningEndpoints
 
         group.MapPost("/models/{id:guid}/analysis", async (Guid id, LearningService learning, IModelAnalyst analyst, CancellationToken ct) =>
             MetaModelDto.From(await learning.AnalyzeAsync(id, analyst, ct)));
+
+        group.MapGet("/models/{id:guid}/drift", async (Guid id, LearningService learning, IPaperRepository paper, CancellationToken ct) =>
+            await learning.CheckDriftAsync(id, paper, ct));
+
+        group.MapPost("/models/{id:guid}/reactivate", async (Guid id, LearningService learning, HttpContext http, CancellationToken ct) =>
+            MetaModelDto.From(await learning.ReactivateAsync(id, http.Actor(), ct)));
 
         group.MapGet("/analyst", (IModelAnalyst analyst) => new { analyst.IsConfigured });
 

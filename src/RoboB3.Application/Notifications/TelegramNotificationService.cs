@@ -44,6 +44,8 @@ public sealed class TelegramNotificationService(
         ["risk-limits.update"] = "⚙️ Limites de risco alterados",
         ["ia.modelo-promovido"] = "🧠 Modelo da IA promovido",
         ["ia.modelo-aposentado"] = "🧠 Modelo da IA aposentado",
+        ["ia.modelo-reativado"] = "🧠 Modelo da IA reativado",
+        ["ia.drift"] = "📉 Mudança de regime nas variáveis da IA",
         ["operacao.posicao-encerrada"] = "✋ Posição encerrada manualmente",
     };
 

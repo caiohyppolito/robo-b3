@@ -52,7 +52,7 @@ def _validate(timeframe: str, count: int) -> None:
 
 
 class Mt5Backend:
-    """Leitura de dados do terminal MetaTrader 5 já logado. Não existe envio de ordens aqui."""
+    """Terminal MetaTrader 5 já logado: dados e, com ROBOB3_ORDERS ligado (ver orders.py), ordens."""
 
     def __init__(self, settings: Settings) -> None:
         import MetaTrader5 as mt5  # disponível só no Windows
@@ -227,13 +227,41 @@ class Mt5Backend:
         if deal is None:
             return {"filled": False, "retcode": result.retcode, "order": result.order,
                     "message": "Ordem enviada, mas o negócio não foi confirmado em 5 s. Confira no MT5."}
+        message = "Executada."
+        stop_confirmed = None
+        if order.stop_loss and not order.position_ticket:
+            stop_confirmed = self._ensure_protection(order.symbol, deal.position_id, order.stop_loss, order.take_profit)
+            if not stop_confirmed:
+                message = "Executada, mas o stop NÃO ficou registrado na corretora. Só o stop do robô protege a posição."
         return {"filled": True, "retcode": result.retcode, "order": result.order, "deal": deal.ticket,
-                "ticket": deal.position_id, "price": deal.price, "volume": int(deal.volume), "message": "Executada."}
+                "ticket": deal.position_id, "price": deal.price, "volume": int(deal.volume), "message": message,
+                "stop_confirmed": stop_confirmed}
+
+    def _position(self, ticket: int):
+        found = self._mt5.positions_get(ticket=int(ticket)) or []
+        return found[0] if found else None
+
+    def _ensure_protection(self, symbol: str, ticket: int, stop_loss: float, take_profit: float | None) -> bool:
+        """Na B3 o stop junto da ordem pode não ser registrado. Confere na posição; se faltar, registra à parte uma vez."""
+        position = self._position(ticket)
+        if position is not None and position.sl:
+            return True
+        result = self._mt5.order_send({
+            "action": self._mt5.TRADE_ACTION_SLTP, "symbol": symbol, "position": int(ticket),
+            "sl": float(stop_loss), "tp": float(take_profit or 0.0),
+        })
+        if result is None or result.retcode != self._mt5.TRADE_RETCODE_DONE:
+            return False
+        position = self._position(ticket)
+        return position is not None and bool(position.sl)
 
     def set_stop(self, symbol: str, ticket: int, stop_loss: float) -> dict:
         self._ensure()
+        # Mantém o alvo que já estiver na posição: mandar tp=0 apagaria o take profit.
+        current = self._position(ticket)
         result = self._mt5.order_send({
-            "action": self._mt5.TRADE_ACTION_SLTP, "symbol": symbol, "position": int(ticket), "sl": float(stop_loss), "tp": 0.0,
+            "action": self._mt5.TRADE_ACTION_SLTP, "symbol": symbol, "position": int(ticket), "sl": float(stop_loss),
+            "tp": float(current.tp) if current is not None and current.tp else 0.0,
         })
         ok = result is not None and result.retcode == self._mt5.TRADE_RETCODE_DONE
         return {"ok": ok, "message": "Stop atualizado." if ok else f"Stop não atualizado: {result.comment if result else self._mt5.last_error()}"}
@@ -253,7 +281,9 @@ class FakeBackend:
 
     BASE_PRICES = {"WIN": 130_000.0, "WDO": 5_500.0, "IND": 130_000.0, "DOL": 5_500.0, "BOVA11": 120.0}
 
-    def __init__(self, clock=lambda: datetime.now(timezone.utc), price_override=None) -> None:
+    def __init__(self, clock=lambda: datetime.now(timezone.utc), price_override=None, drop_stops: bool = False) -> None:
+        # drop_stops simula a corretora que ignora o stop enviado junto com a ordem.
+        self.drop_stops = drop_stops
         self._clock = clock
         # Para testes: função (símbolo) -> preço, no lugar das ondas sintéticas.
         self._price_override = price_override
@@ -369,7 +399,8 @@ class FakeBackend:
         if current is None:
             self._next_ticket += 1
             self._positions[order.symbol] = {"ticket": self._next_ticket, "symbol": order.symbol, "side": order.side,
-                                             "volume": order.volume, "price": price, "stopLoss": order.stop_loss,
+                                             "volume": order.volume, "price": price,
+                                             "stopLoss": None if self.drop_stops else order.stop_loss,
                                              "takeProfit": order.take_profit}
             ticket = self._next_ticket
         elif current["side"] == order.side:
@@ -389,8 +420,12 @@ class FakeBackend:
                                                      "volume": -remaining, "price": price, "stopLoss": order.stop_loss}
                     ticket = self._next_ticket
         self._next_ticket += 1
+        stop_confirmed = None
+        if order.stop_loss and not order.position_ticket and order.symbol in self._positions:
+            stop_confirmed = bool(self._positions[order.symbol].get("stopLoss"))
         return {"filled": True, "retcode": 10009, "order": self._next_ticket, "deal": self._next_ticket,
-                "ticket": ticket, "price": round(price, 2), "volume": order.volume, "message": "Executada (simulação)."}
+                "ticket": ticket, "price": round(price, 2), "volume": order.volume, "message": "Executada (simulação).",
+                "stop_confirmed": stop_confirmed}
 
     def set_stop(self, symbol: str, ticket: int, stop_loss: float) -> dict:
         position = self._positions.get(symbol)

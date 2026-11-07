@@ -471,7 +471,12 @@ public sealed partial class PaperTradingService(
 
         var features = FeatureExtractor.TryExtract(history, target);
         double? probability = null;
-        if (assignment.UseMetaModel && features is not null
+        // O modelo só conhece variáveis diárias; alocações antigas intradiárias com IA ligada não usam o filtro.
+        if (assignment.UseMetaModel && assignment.Timeframe != Timeframe.D1)
+        {
+            cycle.Messages.Add($"{contract}: filtro da IA ignorado, o modelo é treinado em barras diárias e a alocação usa {assignment.Timeframe}.");
+        }
+        else if (assignment.UseMetaModel && features is not null
             && await learning.GetActiveFilterAsync(assignment.StrategyKey, cancellationToken) is { } active)
         {
             var assessment = active.Filter.Assess(features);
@@ -607,6 +612,14 @@ public sealed partial class PaperTradingService(
         var result = await cycle.Executor.SendAsync(instruction, cancellationToken);
         intent.Complete(result.Filled, result.Price, result.Quantity, result.BrokerTicket, result.Message, clock.GetUtcNow());
         AuditOrder(cycle, instruction, result);
+
+        // Stop que não ficou na corretora: a posição só está protegida pelo stop do robô, que depende do PC ligado.
+        // Trava novas entradas (saídas e o stop por software continuam) até alguém conferir no MT5.
+        if (result.Filled && instruction.StopLoss is not null && result.StopConfirmed == false)
+        {
+            Halt(cycle, $"o stop de {instruction.Symbol} não ficou registrado na corretora; confira no MT5 antes de destravar.");
+        }
+
         return (result, intent);
     }
 

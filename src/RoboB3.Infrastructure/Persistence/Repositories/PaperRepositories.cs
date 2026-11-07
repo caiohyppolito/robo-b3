@@ -26,6 +26,17 @@ internal sealed class PaperRepository(RoboB3DbContext db) : IPaperRepository
     public async Task<IReadOnlyList<TradingDecision>> ListRecentDecisionsAsync(ExecutionMode mode, int count, CancellationToken cancellationToken) =>
         await db.TradingDecisions.AsNoTracking().Where(d => d.Mode == mode).OrderByDescending(d => d.Id).Take(Math.Clamp(count, 1, 500)).ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<IReadOnlyList<float>>> ListRecentDailyFeaturesAsync(string strategyKey, int count, CancellationToken cancellationToken)
+    {
+        var daily = db.StrategyAssignments.Where(a => a.Timeframe == Domain.MarketData.Timeframe.D1).Select(a => a.Id);
+        var decisions = await db.TradingDecisions.AsNoTracking()
+            .Where(d => d.StrategyKey == strategyKey && daily.Contains(d.AssignmentId))
+            .OrderByDescending(d => d.Id)
+            .Take(Math.Clamp(count, 1, 2000))
+            .ToListAsync(cancellationToken);
+        return decisions.Select(d => d.Features).Where(f => f.Count == Domain.Learning.FeatureVector.Count).ToList();
+    }
+
     public async Task<IReadOnlyList<PaperFill>> ListRecentFillsAsync(ExecutionMode mode, int count, CancellationToken cancellationToken) =>
         await db.PaperFills.AsNoTracking().Where(f => f.Mode == mode).OrderByDescending(f => f.Time).Take(Math.Clamp(count, 1, 500)).ToListAsync(cancellationToken);
 
