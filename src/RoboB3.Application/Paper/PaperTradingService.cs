@@ -277,11 +277,17 @@ public sealed partial class PaperTradingService(
             position.CountBar();
             if (target == position.Direction)
             {
-                if (signal.StopPrice is { } stop && position.TightenStop(stop)
-                    && position.BrokerTicket is { } ticket
-                    && !await cycle.Executor.UpdateStopAsync(position.ContractSymbol, ticket, stop, cancellationToken))
+                // O stop vai arredondado para o tick: fora do tick a corretora recusa a alteração e o livro
+                // do robô passaria a acreditar numa proteção mais apertada do que a registrada lá.
+                if (signal.StopPrice is { } candidate)
                 {
-                    cycle.Messages.Add($"{position.ContractSymbol}: a corretora não aceitou o novo stop {stop}; o robô segue vigiando o stop.");
+                    var stop = instrument.RoundToTick(candidate);
+                    if (position.TightenStop(stop)
+                        && position.BrokerTicket is { } ticket
+                        && !await cycle.Executor.UpdateStopAsync(position.ContractSymbol, ticket, stop, cancellationToken))
+                    {
+                        cycle.Messages.Add($"{position.ContractSymbol}: a corretora não aceitou o novo stop {stop}; o robô segue vigiando o stop.");
+                    }
                 }
 
                 return;
@@ -372,7 +378,7 @@ public sealed partial class PaperTradingService(
             return;
         }
 
-        decimal? stop = stopDistance is > 0 ? RoundToTick(price - ((int)target * stopDistance.Value), instrument) : null;
+        decimal? stop = stopDistance is > 0 ? instrument.RoundToTick(price - ((int)target * stopDistance.Value)) : null;
         var instruction = new OrderInstruction(contract, side, quantity, price, stop, null, NewClientId("e"), $"entrada {assignment.StrategyKey}");
         var result = await cycle.Executor.SendAsync(instruction, cancellationToken);
         AuditOrder(cycle, instruction, result);
@@ -445,15 +451,6 @@ public sealed partial class PaperTradingService(
     }
 
     private static string NewClientId(string kind) => $"{kind}-{Guid.NewGuid():N}";
-
-    private static decimal RoundToTick(decimal price, InstrumentSpec instrument)
-    {
-        // Mini índice anda de 5 em 5 pontos; mini dólar, de 0,5; ações, de 0,01.
-        var tick = instrument.Symbol.StartsWith("WIN", StringComparison.Ordinal) ? 5m
-            : instrument.Symbol.StartsWith("WDO", StringComparison.Ordinal) ? 0.5m
-            : 0.01m;
-        return Math.Round(price / tick, MidpointRounding.AwayFromZero) * tick;
-    }
 
     private async Task<Quote?> FreshQuoteAsync(Cycle cycle, string symbol, CancellationToken cancellationToken)
     {

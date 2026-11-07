@@ -31,6 +31,9 @@ internal sealed class FakeFeed(FakeTimeProvider clock) : IMarketDataFeed
 
     public decimal Spread { get; set; } = 5m;
 
+    /// <summary>Distância da máxima e da mínima ao fechamento. Define o ATR das barras do teste.</summary>
+    public decimal BarRange { get; set; } = 10m;
+
     /// <summary>Quando definido, as barras terminam aqui (mercado fechado) em vez de no horário atual.</summary>
     public DateTimeOffset? LastBarOpen { get; set; }
 
@@ -49,7 +52,7 @@ internal sealed class FakeFeed(FakeTimeProvider clock) : IMarketDataFeed
             .Select(i =>
             {
                 var price = Price - ((count - 1 - i) * 1m);
-                return new Candle(asset.Symbol, timeframe, current.AddMinutes(-5 * (count - 1 - i)), price, price + 10, price - 10, price, 100);
+                return new Candle(asset.Symbol, timeframe, current.AddMinutes(-5 * (count - 1 - i)), price, price + BarRange, price - BarRange, price, 100);
             })
             .ToList();
         return Task.FromResult<IReadOnlyList<Candle>>(candles);
@@ -74,6 +77,8 @@ internal sealed class FakeBroker(Domain.Execution.ExecutionMode mode) : IOrderEx
     public Dictionary<long, decimal> ClosingPrices { get; } = [];
 
     public List<OrderInstruction> Sent { get; } = [];
+
+    public List<(string Symbol, long Ticket, decimal Stop)> StopUpdates { get; } = [];
 
     public bool RejectNext { get; set; }
 
@@ -100,7 +105,11 @@ internal sealed class FakeBroker(Domain.Execution.ExecutionMode mode) : IOrderEx
         return Task.FromResult(new OrderResult(true, price, instruction.Quantity, opened.Ticket, "Executada."));
     }
 
-    public Task<bool> UpdateStopAsync(string symbol, long ticket, decimal stop, CancellationToken cancellationToken) => Task.FromResult(true);
+    public Task<bool> UpdateStopAsync(string symbol, long ticket, decimal stop, CancellationToken cancellationToken)
+    {
+        StopUpdates.Add((symbol, ticket, stop));
+        return Task.FromResult(true);
+    }
 
     public Task<IReadOnlyList<BrokerPosition>?> GetPositionsAsync(CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<BrokerPosition>?>(Positions.ToList());
@@ -394,6 +403,35 @@ public class PaperTradingTests
         Assert.Equal(130_010m, position.EntryPrice);
         Assert.Equal(50_000m, (await _db.PaperAccounts.SingleAsync()).InitialCapital);
         Assert.Contains(await _db.AuditEntries.ToListAsync(), a => a.Action == "ordem.executada");
+    }
+
+    [Fact]
+    public async Task Stop_movel_vai_para_a_corretora_arredondado_no_tick_do_mini_indice()
+    {
+        // Amplitude fracionária: o stop da estratégia (3 ATRs) não cai num múltiplo de 5,
+        // e fora do tick a corretora recusaria a alteração.
+        _feed.BarRange = 3.7m;
+        var assignment = await AssignAsync("WIN", StrategyKeys.SmaCross);
+        _execution.ChangeTo(Domain.Execution.ExecutionMode.Mt5Demo, "teste", _clock.GetUtcNow());
+
+        // O cruzamento de médias não acontece numa série só de alta, então a posição entra
+        // semeada, já aberta na corretora com o stop registrado lá.
+        await Service().RunCycleAsync(CancellationToken.None);
+        var account = await _db.PaperAccounts.SingleAsync();
+        var asset = await _db.Assets.SingleAsync(a => a.Symbol == "WIN");
+        var (position, _) = account.OpenPosition(assignment.Id, InstrumentSpec.For(asset), "WINZ26", StrategyKeys.SmaCross,
+            PositionDirection.Long, 1, 129_000m, 128_900m, new CostModel(0, 0, 0, 0), null, null, _clock.GetUtcNow(), brokerTicket: 777);
+        _db.PaperPositions.Add(position);
+        _broker.Positions.Add(new BrokerPosition(777, "WINZ26", Domain.Trading.OrderSide.Buy, 1, 129_000m, 128_900m, true));
+        await _db.SaveChangesAsync();
+
+        _clock.SetUtcNow(_clock.GetUtcNow().AddMinutes(5));
+        await Service().RunCycleAsync(CancellationToken.None);
+
+        var atualizacao = Assert.Single(_broker.StopUpdates);
+        Assert.Equal(0m, atualizacao.Stop % 5m);
+        // O livro do robô guarda exatamente o stop que a corretora recebeu.
+        Assert.Equal(atualizacao.Stop, (await _db.PaperPositions.SingleAsync()).Stop);
     }
 
     [Fact]
