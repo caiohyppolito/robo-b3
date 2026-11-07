@@ -179,14 +179,12 @@ public sealed partial class PaperTradingService(
         var instrument = InstrumentSpec.For(asset);
         var contract = await feed.ResolveSymbolAsync(asset, cancellationToken);
         var candles = await feed.GetBarsAsync(asset, contract, assignment.Timeframe, options.BarsToLoad, cancellationToken);
-        if (candles.Count < 2)
-        {
-            return;
-        }
 
-        // A última barra ainda está em formação: decide-se só com barras fechadas, como no backtest.
-        var closed = candles.OrderBy(c => c.OpenTime).SkipLast(1).ToList();
-        if (!assignment.MarkProcessed(closed[^1].OpenTime))
+        // Decide-se só com barras fechadas, como no backtest: a barra só conta depois que o horário de fim dela passou.
+        // Com o mercado fechado, a última barra do pregão já está completa e entra normalmente.
+        var barLength = TimeSpan.FromMinutes((int)assignment.Timeframe);
+        var closed = candles.Where(c => c.OpenTime + barLength <= cycle.Now).OrderBy(c => c.OpenTime).ToList();
+        if (closed.Count == 0 || !assignment.MarkProcessed(closed[^1].OpenTime))
         {
             return;
         }
@@ -204,6 +202,7 @@ public sealed partial class PaperTradingService(
         var context = position is null ? PositionContext.None : new PositionContext(position.Direction, position.EntryPrice, position.BarsHeld);
         var signal = strategy.Evaluate(history, context);
         var target = signal.Target == PositionDirection.Short && !instrument.AllowShort ? PositionDirection.Flat : signal.Target;
+        cycle.Messages.Add($"{assignment.Symbol} → {contract}: barra {DescribeBar(closed[^1], assignment.Timeframe)} avaliada, sinal: {Describe(target)}.");
 
         if (position is not null)
         {
@@ -308,6 +307,18 @@ public sealed partial class PaperTradingService(
         cycle.Opened++;
         cycle.Messages.Add($"{contract}: {(isBuy ? "compra" : "venda")} de {quantity} a {fill.Price}.");
     }
+
+    private static string DescribeBar(Candle candle, Timeframe timeframe) =>
+        timeframe == Timeframe.D1
+            ? $"de {DateOnly.FromDateTime(candle.OpenTime.UtcDateTime):dd/MM}"
+            : $"das {B3Calendar.ToLocal(candle.OpenTime):dd/MM HH:mm}";
+
+    private static string Describe(PositionDirection direction) => direction switch
+    {
+        PositionDirection.Long => "comprado",
+        PositionDirection.Short => "vendido",
+        _ => "fora do mercado",
+    };
 
     private void Close(Cycle cycle, PaperPosition position, decimal price, string reason)
     {

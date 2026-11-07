@@ -29,6 +29,9 @@ internal sealed class FakeFeed(FakeTimeProvider clock) : IMarketDataFeed
 
     public decimal Spread { get; set; } = 5m;
 
+    /// <summary>Quando definido, as barras terminam aqui (mercado fechado) em vez de no horário atual.</summary>
+    public DateTimeOffset? LastBarOpen { get; set; }
+
     public Task<FeedStatus> GetStatusAsync(CancellationToken cancellationToken) =>
         Task.FromResult(new FeedStatus(Connected, "teste", "Servidor", 1, true, "Corretora", Connected ? null : "terminal fechado"));
 
@@ -39,7 +42,7 @@ internal sealed class FakeFeed(FakeTimeProvider clock) : IMarketDataFeed
     {
         // Barras de 5 minutos terminando na barra em formação, com preço subindo devagar.
         var now = clock.GetUtcNow();
-        var current = new DateTimeOffset(now.Year, now.Month, now.Day, now.Hour, now.Minute / 5 * 5, 0, TimeSpan.Zero);
+        var current = LastBarOpen ?? new DateTimeOffset(now.Year, now.Month, now.Day, now.Hour, now.Minute / 5 * 5, 0, TimeSpan.Zero);
         var candles = Enumerable.Range(0, count)
             .Select(i =>
             {
@@ -137,6 +140,30 @@ public class PaperTradingTests
         Assert.Equal(130_005m, position.EntryPrice);
         Assert.Equal(2, position.Quantity);
         Assert.Single(await _db.PaperFills.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Barra_em_formacao_e_ignorada_e_o_ciclo_informa_contrato_e_barra()
+    {
+        var assignment = await AssignAsync("WIN", StrategyKeys.BuyAndHold);
+        _clock.SetUtcNow(new DateTimeOffset(2026, 11, 9, 17, 2, 0, TimeSpan.Zero)); // 14h02: barra das 14h00 em formação
+
+        var report = await Service().RunCycleAsync(CancellationToken.None);
+
+        Assert.Equal(new DateTimeOffset(2026, 11, 9, 16, 55, 0, TimeSpan.Zero), (await _db.StrategyAssignments.SingleAsync(a => a.Id == assignment.Id)).LastProcessedBar);
+        Assert.Contains(report.Messages, m => m.StartsWith("WIN → WINZ26: barra das 09/11 13:55 avaliada, sinal: comprado", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Com_mercado_fechado_a_ultima_barra_do_pregao_ja_conta_como_fechada()
+    {
+        var assignment = await AssignAsync("WIN", StrategyKeys.BuyAndHold);
+        _clock.SetUtcNow(new DateTimeOffset(2026, 11, 14, 15, 0, 0, TimeSpan.Zero)); // sábado
+        _feed.LastBarOpen = new DateTimeOffset(2026, 11, 13, 21, 25, 0, TimeSpan.Zero); // 18h25 de sexta, em Brasília
+
+        await Service().RunCycleAsync(CancellationToken.None);
+
+        Assert.Equal(_feed.LastBarOpen, (await _db.StrategyAssignments.SingleAsync(a => a.Id == assignment.Id)).LastProcessedBar);
     }
 
     [Fact]
