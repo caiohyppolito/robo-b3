@@ -3,6 +3,7 @@ using RoboB3.Application.Abstractions;
 using RoboB3.Domain.Analysis;
 using RoboB3.Domain.Backtesting;
 using RoboB3.Domain.Common;
+using RoboB3.Domain.Learning;
 using RoboB3.Domain.MarketData;
 using RoboB3.Domain.Risk;
 using RoboB3.Domain.Strategies;
@@ -16,6 +17,8 @@ public sealed class BacktestService(
     IRiskSettingsRepository riskSettings,
     IBacktestRunRepository runs,
     IUnitOfWork unitOfWork,
+    IMetaModelRepository metaModels,
+    IMetaModelEngine metaModelEngine,
     IOptions<BacktestOptions> options,
     TimeProvider clock)
 {
@@ -33,12 +36,24 @@ public sealed class BacktestService(
         var startIndex = FirstIndexOnOrAfter(bars, from);
         var settings = await BuildSettingsAsync(request.Settings, cancellationToken);
 
-        var result = BacktestEngine.Run(bars, definition.Create(parameters), parameters, InstrumentSpec.For(asset), settings, startIndex);
+        var (modelId, filter) = request.UseMetaModel ? await ActiveFilterAsync(definition.Key, cancellationToken) : (null, null);
+        var result = BacktestEngine.Run(bars, definition.Create(parameters), parameters, InstrumentSpec.For(asset), settings, startIndex, filter);
 
-        var run = new BacktestRun(result, settings, clock.GetUtcNow());
+        var run = new BacktestRun(result, settings, clock.GetUtcNow(), modelId);
         runs.Add(run);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return run;
+    }
+
+    private async Task<(Guid? ModelId, ISignalFilter? Filter)> ActiveFilterAsync(string strategyKey, CancellationToken cancellationToken)
+    {
+        var active = await metaModels.GetActiveAsync(strategyKey, cancellationToken);
+        if (active?.ModelBytes is not { } bytes)
+        {
+            throw new DomainException("Não há modelo de IA ativo para esta estratégia. Treine um na aba IA.");
+        }
+
+        return (active.Id, new ThresholdSignalFilter(metaModelEngine.Load(bytes), active.Threshold));
     }
 
     internal async Task<(Asset Asset, IReadOnlyList<Bar> Bars)> LoadBarsAsync(

@@ -14,7 +14,7 @@ public sealed class BacktestRun
         Events = [];
     }
 
-    public BacktestRun(BacktestResult result, BacktestSettings settings, DateTimeOffset createdAt)
+    public BacktestRun(BacktestResult result, BacktestSettings settings, DateTimeOffset createdAt, Guid? metaModelId = null)
     {
         ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(settings);
@@ -31,6 +31,7 @@ public sealed class BacktestRun
         Trades = result.Trades;
         Equity = result.Equity;
         Events = result.Events;
+        MetaModelId = metaModelId;
     }
 
     public Guid Id { get; private set; }
@@ -50,6 +51,9 @@ public sealed class BacktestRun
     public decimal RiskPerTradePercent { get; private set; }
 
     public bool ApplyTaxes { get; private set; }
+
+    /// <summary>Modelo de IA usado como filtro de sinais, se houver.</summary>
+    public Guid? MetaModelId { get; private set; }
 
     public PerformanceMetrics Metrics { get; private set; }
 

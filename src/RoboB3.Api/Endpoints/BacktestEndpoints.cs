@@ -42,7 +42,8 @@ public sealed record RunBacktestDto(
     Dictionary<string, decimal>? Parameters,
     DateOnly? From,
     DateOnly? To,
-    SimulationDto? Simulation);
+    SimulationDto? Simulation,
+    bool? UseMetaModel);
 
 public sealed record CompareDto(
     List<string>? Symbols,
@@ -59,10 +60,11 @@ public sealed record BacktestSummaryDto(
     IReadOnlyDictionary<string, decimal> Parameters,
     DateOnly StartDate,
     DateOnly EndDate,
-    PerformanceMetrics Metrics)
+    PerformanceMetrics Metrics,
+    Guid? MetaModelId)
 {
     public static BacktestSummaryDto From(BacktestRun r) =>
-        new(r.Id, r.CreatedAt, r.Symbol, r.StrategyKey, r.Parameters, r.From, r.To, r.Metrics);
+        new(r.Id, r.CreatedAt, r.Symbol, r.StrategyKey, r.Parameters, r.From, r.To, r.Metrics, r.MetaModelId);
 }
 
 public sealed record BacktestDetailDto(
@@ -95,7 +97,8 @@ internal static class BacktestEndpoints
                 dto.Parameters,
                 dto.From,
                 dto.To,
-                (dto.Simulation ?? new SimulationDto(null, null, null, null, null)).ToSettings());
+                (dto.Simulation ?? new SimulationDto(null, null, null, null, null)).ToSettings(),
+                dto.UseMetaModel ?? false);
             var run = await service.RunAsync(request, ct);
             return Results.Created($"/api/backtests/{run.Id}", BacktestDetailDto.From(run));
         });

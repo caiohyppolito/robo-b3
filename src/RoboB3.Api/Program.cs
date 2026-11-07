@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.RateLimiting;
 using RoboB3.Api.Auth;
@@ -12,6 +13,9 @@ if (args is ["hash-password", ..])
 {
     return PasswordCommand.Run();
 }
+
+// Mensagens de negócio (motivos, eventos, decisões da IA) no formato brasileiro: 1,27 e não 1.27.
+CultureInfo.DefaultThreadCurrentCulture = CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.GetCultureInfo("pt-BR");
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -67,6 +71,7 @@ app.MapAuthEndpoints();
 app.MapTradingEndpoints();
 app.MapMarketDataEndpoints();
 app.MapBacktestEndpoints();
+app.MapLearningEndpoints();
 
 await app.RunAsync();
 return 0;

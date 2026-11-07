@@ -1,8 +1,9 @@
 import type { Trade } from "../../api";
-import { formatBrl, formatDate, formatNumber, formatSignedPercent } from "../../format";
+import { formatBrl, formatDate, formatNumber, formatPercent, formatSignedPercent } from "../../format";
 
 export function TradesTable({ trades }: { trades: Trade[] }) {
   if (trades.length === 0) return <p className="muted">Nenhuma operação no período.</p>;
+  const hasProbability = trades.some((t) => t.entryProbability != null);
 
   return (
     <div className="table-wrap scroll-y">
@@ -18,6 +19,7 @@ export function TradesTable({ trades }: { trades: Trade[] }) {
             <th className="num">Resultado</th>
             <th className="num">%</th>
             <th>Motivo</th>
+            {hasProbability && <th className="num">Chance (IA)</th>}
           </tr>
         </thead>
         <tbody>
@@ -32,6 +34,9 @@ export function TradesTable({ trades }: { trades: Trade[] }) {
               <td className={`num ${t.netProfit >= 0 ? "up" : "down"}`}>{formatBrl(t.netProfit)}</td>
               <td className={`num ${t.returnPercent >= 0 ? "up" : "down"}`}>{formatSignedPercent(t.returnPercent)}</td>
               <td className="muted small">{t.exitReason}</td>
+              {hasProbability && (
+                <td className="num">{t.entryProbability == null ? "—" : formatPercent(t.entryProbability * 100)}</td>
+              )}
             </tr>
           ))}
         </tbody>

@@ -67,6 +67,35 @@ Na aba **Backtest** do painel:
 
 > Backtest bom não garante lucro futuro. Desconfie de resultados que só aparecem dentro da amostra.
 
+## IA que aprende com os erros
+
+Na aba **IA** do painel, cada estratégia pode ganhar um **filtro de sinais** treinado com machine learning (ML.NET, árvores com boosting).
+
+**Princípio de segurança:** a IA **só pode vetar entradas**. Ela nunca cria operações e nunca impede uma saída. No pior caso, o robô opera menos.
+
+**Como o modelo aprende:**
+
+1. **Memória:** cada operação passada vira um exemplo com o contexto de mercado na entrada (14 variáveis: retornos, volatilidade, ATR, RSI, distância das médias, posição no canal, volume relativo...) e o resultado (lucro ou prejuízo). Entram as operações de backtest de toda a grade de parâmetros e o **diário de operações reais/simuladas** (Fases 4 e 5), que pesa o dobro.
+2. **Separação no tempo:** treina com os primeiros 70% (só operações já encerradas antes da validação começar) e valida com os 30% seguintes, que o modelo nunca viu.
+3. **Avaliação:** AUC (capacidade de separar acertos de erros), taxa de acerto e retorno médio com e sem filtro, e o teste que importa: o **Sharpe do backtest fora da amostra** com e sem o filtro, e contra o modelo atual.
+4. **Decisão automática, registrada na auditoria:**
+   - **promove** o modelo novo só se: AUC ≥ 0,55; o filtro mantém pelo menos 20% dos sinais; o Sharpe melhora pelo menos 0,05 em relação a operar sem filtro; e o modelo supera o modelo atual;
+   - **aposenta** o modelo atual se ele deixou de superar operar sem filtro;
+   - caso contrário, **rejeita** o modelo novo, explicando o motivo em português.
+5. **Explicação:** importância de cada variável (quanto a AUC cai ao embaralhá-la) e, opcionalmente, uma análise em texto escrita pelo Claude.
+
+O worker retreina a cada 24 h (`Workers:LearningIntervalHours`). Os critérios ficam na seção `Learning` do `appsettings.json`. No backtest, marque "Usar o filtro da IA" para comparar o resultado com e sem o filtro.
+
+> Com poucos dados ou com mercado sem padrão, o esperado é a IA **rejeitar** os modelos, e isso é bom: ela não inventa vantagem que não existe.
+
+### Análise do Claude (opcional)
+
+```powershell
+dotnet user-secrets set "Anthropic:ApiKey" "sua-chave" --project src/RoboB3.Api
+```
+
+Usa o modelo `claude-opus-5-5` (configurável em `Anthropic:Model`), com redirecionamento automático para um modelo de reserva se houver recusa por política. O Claude só lê os números já calculados: não decide nada sobre operações.
+
 ## Como rodar no Windows
 
 ### 1. Pré-requisitos
@@ -134,6 +163,6 @@ dotnet test
 
 - [x] **Fase 1, fundação:** solution, banco, API, workers, painel, gestão de risco, kill switch e CI
 - [x] **Fase 2, estratégias e backtest:** indicadores, quatro estratégias, backtest com custos, IR e CDI, comparação com validação fora da amostra e painel com curva de patrimônio
-- [ ] **Fase 3, IA:** diário de trades, meta-modelo (ML.NET) que filtra sinais ruins e retreino walk-forward, promovendo o modelo novo só se ele vencer fora da amostra
+- [x] **Fase 3, IA:** contexto de mercado por sinal, filtro de sinais com ML.NET, validação fora da amostra, promoção e aposentadoria automáticas, diário de operações, importância das variáveis e análise do Claude
 - [ ] **Fase 4, paper trading:** integração com o MetaTrader 5 da Clear (conta demo), dados intradiários de WIN/WDO e carteira simulada
 - [ ] **Fase 5, conta real:** começando com tamanho mínimo e todas as travas ligadas

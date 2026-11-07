@@ -56,7 +56,9 @@ public sealed record BacktestTrade(
     decimal Costs,
     decimal NetProfit,
     decimal ReturnPercent,
-    string ExitReason);
+    string ExitReason,
+    IReadOnlyList<float>? EntryFeatures = null,
+    double? EntryProbability = null);
 
 /// <summary>Patrimônio da estratégia, do "comprar e segurar" com 100% do capital e do CDI no mesmo dia.</summary>
 public sealed record EquityPoint(DateOnly Date, decimal Equity, decimal Benchmark, decimal RiskFree);

@@ -11,4 +11,7 @@ public sealed class WorkerOptions
 
     [Range(1, 3600)]
     public int RiskMonitorIntervalSeconds { get; set; } = 15;
+
+    [Range(1, 168)]
+    public int LearningIntervalHours { get; set; } = 24;
 }

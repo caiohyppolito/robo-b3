@@ -3,6 +3,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using RoboB3.Application.Abstractions;
 using RoboB3.Application.Backtesting;
+using RoboB3.Application.Learning;
+using RoboB3.Infrastructure.Learning;
 using RoboB3.Infrastructure.MarketData;
 using RoboB3.Infrastructure.Persistence;
 using RoboB3.Infrastructure.Persistence.Repositories;
@@ -29,6 +31,15 @@ public static class DependencyInjection
         services.AddScoped<ITradingStateRepository, TradingStateRepository>();
         services.AddScoped<IAuditLog, AuditLog>();
         services.AddScoped<IBacktestRunRepository, BacktestRunRepository>();
+        services.AddScoped<IMetaModelRepository, MetaModelRepository>();
+        services.AddScoped<ITradeJournalRepository, TradeJournalRepository>();
+        services.AddSingleton<IMetaModelEngine, MlNetMetaModelEngine>();
+        services.AddScoped<IModelAnalyst, ClaudeModelAnalyst>();
+        services.AddOptions<AnthropicOptions>().Bind(configuration.GetSection(AnthropicOptions.SectionName));
+        services.AddOptions<LearningOptions>()
+            .Bind(configuration.GetSection(LearningOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
         services.AddScoped<DatabaseInitializer>();
 
         services.AddOptions<TradingOptions>()

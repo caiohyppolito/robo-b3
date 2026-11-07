@@ -1,6 +1,10 @@
+using System.Globalization;
 using RoboB3.Application;
 using RoboB3.Infrastructure;
 using RoboB3.Workers.Jobs;
+
+// Mensagens de negócio (motivos, eventos, decisões da IA) no formato brasileiro: 1,27 e não 1.27.
+CultureInfo.DefaultThreadCurrentCulture = CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.GetCultureInfo("pt-BR");
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -16,5 +20,6 @@ builder.Services.AddOptions<WorkerOptions>()
 
 builder.Services.AddHostedService<MarketDataWorker>();
 builder.Services.AddHostedService<RiskMonitorWorker>();
+builder.Services.AddHostedService<LearningWorker>();
 
 await builder.Build().RunAsync();

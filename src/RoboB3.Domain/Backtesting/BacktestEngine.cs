@@ -1,4 +1,5 @@
 using RoboB3.Domain.Analysis;
+using RoboB3.Domain.Learning;
 using RoboB3.Domain.MarketData;
 using RoboB3.Domain.Risk;
 using RoboB3.Domain.Strategies;
@@ -20,6 +21,8 @@ public sealed class BacktestEngine
     private readonly BacktestSettings _settings;
     private readonly StrategyParameters _parameters;
     private readonly TradingState _runningState;
+    private readonly ISignalFilter? _filter;
+    private readonly bool _captureFeatures;
 
     private readonly List<BacktestTrade> _trades = [];
     private readonly List<EquityPoint> _equity = [];
@@ -33,6 +36,7 @@ public sealed class BacktestEngine
     private decimal _interestEarned;
     private decimal _peakEquity;
     private int _barsInPosition;
+    private int _signalsFiltered;
     private Position? _position;
     private PendingOrder? _pending;
     private bool _killSwitch;
@@ -43,8 +47,12 @@ public sealed class BacktestEngine
         IStrategy strategy,
         StrategyParameters parameters,
         InstrumentSpec instrument,
-        BacktestSettings settings)
+        BacktestSettings settings,
+        ISignalFilter? filter,
+        bool captureFeatures)
     {
+        _filter = filter;
+        _captureFeatures = captureFeatures || filter is not null;
         _bars = bars;
         _strategy = strategy;
         _parameters = parameters;
@@ -60,13 +68,17 @@ public sealed class BacktestEngine
     /// Primeira barra em que se pode operar. As anteriores servem só de aquecimento dos indicadores
     /// (útil para testar fora da amostra sem perder o histórico).
     /// </param>
+    /// <param name="filter">Filtro da IA: pode vetar entradas, nunca saídas.</param>
+    /// <param name="captureFeatures">Registra o contexto de mercado de cada entrada (para treinar a IA).</param>
     public static BacktestResult Run(
         IReadOnlyList<Bar> bars,
         IStrategy strategy,
         StrategyParameters parameters,
         InstrumentSpec instrument,
         BacktestSettings settings,
-        int startIndex = 0)
+        int startIndex = 0,
+        ISignalFilter? filter = null,
+        bool captureFeatures = false)
     {
         ArgumentNullException.ThrowIfNull(bars);
         ArgumentNullException.ThrowIfNull(strategy);
@@ -81,7 +93,7 @@ public sealed class BacktestEngine
                 $"Histórico insuficiente para {strategy.Key}: {bars.Count} barras, necessárias pelo menos {first + 2}.");
         }
 
-        return new BacktestEngine(bars, strategy, parameters, instrument, settings).Execute(first);
+        return new BacktestEngine(bars, strategy, parameters, instrument, settings, filter, captureFeatures).Execute(first);
     }
 
     private BacktestResult Execute(int first)
@@ -141,7 +153,8 @@ public sealed class BacktestEngine
         _equity[^1] = _equity[^1] with { Equity = Math.Round(_cash, 2) };
 
         var metrics = PerformanceMetrics.Calculate(
-            _equity, _trades, _barsInPosition, _costsPaid, _taxesPaid, _interestEarned, _settings.RiskFreeRatePercent);
+            _equity, _trades, _barsInPosition, _costsPaid, _taxesPaid, _interestEarned, _settings.RiskFreeRatePercent)
+            with { SignalsFiltered = _signalsFiltered };
         return new BacktestResult(_instrument.Symbol, _strategy.Key, _parameters, _trades, _equity, _events, metrics);
     }
 
@@ -217,6 +230,27 @@ public sealed class BacktestEngine
         {
             // Bloqueado: só é possível sair (uma virada de mão vira apenas o encerramento).
             target = PositionDirection.Flat;
+            addsRisk = false;
+        }
+
+        FeatureVector? features = null;
+        double? probability = null;
+        if (addsRisk && _captureFeatures)
+        {
+            features = FeatureExtractor.TryExtract(history, target);
+            if (_filter is not null && features is not null)
+            {
+                var assessment = _filter.Assess(features);
+                probability = assessment.Probability;
+                if (!assessment.Allowed)
+                {
+                    // A IA vetou a entrada; se havia posição contrária, ela ainda é encerrada.
+                    _signalsFiltered++;
+                    target = PositionDirection.Flat;
+                    features = null;
+                    probability = null;
+                }
+            }
         }
 
         if (_position is not null)
@@ -241,7 +275,7 @@ public sealed class BacktestEngine
         }
 
         var close = history.Current.Close;
-        _pending = new PendingOrder(target, signal.StopPrice is { } s ? Math.Abs(close - s) : null);
+        _pending = new PendingOrder(target, signal.StopPrice is { } s ? Math.Abs(close - s) : null, features, probability);
     }
 
     private void ExecutePending(Bar bar)
@@ -292,7 +326,11 @@ public sealed class BacktestEngine
         _costsPaid += cost;
 
         decimal? stop = order.StopDistance is { } distance ? price - ((int)order.Target * distance) : null;
-        _position = new Position(order.Target, bar.Date, price, quantity, stop, cost);
+        _position = new Position(order.Target, bar.Date, price, quantity, stop, cost)
+        {
+            Features = order.Features,
+            Probability = order.Probability,
+        };
     }
 
     private int Size(decimal price, decimal? stopDistance, decimal equity)
@@ -369,7 +407,9 @@ public sealed class BacktestEngine
             Math.Round(totalCosts, 2),
             Math.Round(net, 2),
             invested == 0 ? 0 : Math.Round(net / invested * 100m, 2),
-            reason));
+            reason,
+            position.Features?.Values,
+            position.Probability));
 
         var saleAmount = (position.Direction == PositionDirection.Long ? price : position.EntryPrice) * position.Quantity * _instrument.Multiplier;
         _monthTrades.Add(new RealizedTrade(date, Categorize(position.EntryDate, date), net, saleAmount));
@@ -412,7 +452,7 @@ public sealed class BacktestEngine
 
     private static int MonthKey(DateOnly date) => (date.Year * 12) + date.Month;
 
-    private sealed record PendingOrder(PositionDirection Target, decimal? StopDistance);
+    private sealed record PendingOrder(PositionDirection Target, decimal? StopDistance, FeatureVector? Features, double? Probability);
 
     private sealed class Position(
         PositionDirection direction,
@@ -435,6 +475,10 @@ public sealed class BacktestEngine
         public decimal EntryCost { get; } = entryCost;
 
         public int BarsHeld { get; set; }
+
+        public FeatureVector? Features { get; init; }
+
+        public double? Probability { get; init; }
 
         public bool IsTighter(decimal candidate) =>
             Stop is null
