@@ -9,6 +9,7 @@ public static class StrategyKeys
     public const string DonchianBreakout = "donchian-breakout";
     public const string RsiMeanReversion = "rsi-mean-reversion";
     public const string EmaVwap = "ema-vwap";
+    public const string Dunnigan = "dunnigan-pullback";
 }
 
 public sealed record StrategyDefinition(
@@ -120,6 +121,17 @@ public static class StrategyCatalog
                 new("endHhmm", "Entradas até (HHMM)", 1700, 900, 1800, [1700]),
             ],
             p => new EmaVwapStrategy(p.GetInt("fast"), p.GetInt("slow"), p.Get("stopPoints"), p.Get("targetPoints"), p.GetInt("startHhmm"), p.GetInt("endHhmm"))),
+        new(
+            StrategyKeys.Dunnigan,
+            "Pullback de Dunnigan (stop de entrada)",
+            "Na tendência, espera uma correção de barras com máximas e mínimas menores e compra com stop de entrada acima da última máxima, só se o preço retomar. Stop abaixo da correção e alvo em múltiplos do risco.",
+            [
+                new("setupBars", "Barras da correção", 3, 2, 6, [3, 4]),
+                new("trendPeriod", "Média da tendência (barras)", 50, 10, 200, [50, 100]),
+                new("offsetAtr", "Folga do stop de entrada (× ATR)", 0.1m, 0, 1, [0.1m]),
+                new("targetR", "Alvo (múltiplos do risco)", 2, 0.5m, 5, [1.5m, 2]),
+            ],
+            p => new DunniganPullbackStrategy(p.GetInt("setupBars"), p.GetInt("trendPeriod"), p.Get("offsetAtr"), p.Get("targetR"))),
     ];
 
     public static StrategyDefinition Get(string key) =>

@@ -50,6 +50,10 @@ internal sealed class StrategyAssignmentConfiguration : IEntityTypeConfiguration
         builder.Property(a => a.StrategyKey).HasMaxLength(50);
         builder.Property(a => a.Timeframe).HasConversion<string>().HasMaxLength(5);
         builder.Property(a => a.Parameters).AsJson();
+        builder.Property(a => a.ArmedDirection).HasConversion<string>().HasMaxLength(10);
+        builder.Property(a => a.ArmedLevel).HasPrecision(18, 4);
+        builder.Property(a => a.ArmedStop).HasPrecision(18, 4);
+        builder.Property(a => a.ArmedTarget).HasPrecision(18, 4);
         builder.HasOne<Domain.MarketData.Asset>().WithMany().HasForeignKey(a => a.Symbol).OnDelete(DeleteBehavior.Restrict);
     }
 }

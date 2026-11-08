@@ -339,6 +339,42 @@ public class PaperTradingTests
     }
 
     [Fact]
+    public async Task Stop_de_entrada_armado_so_entra_quando_o_preco_cruza_o_nivel()
+    {
+        var assignment = await AssignAsync("WIN", StrategyKeys.SmaCross);
+        await Service().RunCycleAsync(CancellationToken.None);
+        assignment.Arm(PositionDirection.Long, 130_100m, 129_900m, 130_500m, _clock.GetUtcNow().AddMinutes(10));
+        await _db.SaveChangesAsync();
+
+        var below = await Service().RunCycleAsync(CancellationToken.None);
+        _feed.Price = 130_200m;
+        var crossed = await Service().RunCycleAsync(CancellationToken.None);
+
+        Assert.Equal(0, below.Opened);
+        Assert.Equal(1, crossed.Opened);
+        var position = await _db.PaperPositions.SingleAsync();
+        Assert.Equal(position.EntryPrice - 200m, position.Stop);
+        Assert.Null((await _db.StrategyAssignments.SingleAsync()).ArmedDirection);
+        Assert.Contains(await _db.TradingDecisions.ToListAsync(), d => d.Outcome == DecisionOutcome.Entered);
+    }
+
+    [Fact]
+    public async Task Stop_de_entrada_vencido_e_desarmado_sem_operar()
+    {
+        var assignment = await AssignAsync("WIN", StrategyKeys.SmaCross);
+        await Service().RunCycleAsync(CancellationToken.None);
+        assignment.Arm(PositionDirection.Long, 130_100m, 129_900m, null, _clock.GetUtcNow().AddMinutes(-1));
+        await _db.SaveChangesAsync();
+        _feed.Price = 130_200m;
+
+        var report = await Service().RunCycleAsync(CancellationToken.None);
+
+        Assert.Equal(0, report.Opened);
+        Assert.Contains(report.Messages, m => m.Contains("expirou", StringComparison.Ordinal));
+        Assert.Null((await _db.StrategyAssignments.SingleAsync()).ArmedDirection);
+    }
+
+    [Fact]
     public async Task Day_trade_e_zerado_no_horario_de_encerramento()
     {
         await AssignAsync("WIN", StrategyKeys.BuyAndHold, dayTrade: true);

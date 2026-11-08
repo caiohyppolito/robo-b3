@@ -10,4 +10,5 @@ export const OUTCOME: Record<DecisionOutcome, { label: string; tone: "good" | "b
   Vetoed: { label: "Vetada pela IA", tone: "warn" },
   Rejected: { label: "Recusada (risco)", tone: "bad" },
   Failed: { label: "Falhou na corretora", tone: "bad" },
+  Armed: { label: "Stop de entrada armado", tone: "warn" },
 };

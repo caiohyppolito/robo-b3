@@ -95,5 +95,5 @@ A conta real só deve ser considerada com **todos** os itens abaixo cumpridos. O
 - **Estratégia nas execuções antigas:** execuções gravadas antes da coluna de estratégia aparecem sem ela no Histórico.
 - **Conciliação de notas de corretagem:** a conferência das notas da Clear e do IR contra a corretora (como faz o COIR) não foi feita. Fica como módulo separado, futuro, sem copiar código AGPL.
 - **Fora do escopo por enquanto:** carteira com alocação entre ativos (risk parity com limite por ativo) e varredura automática de ativos.
-- **Stop-entry:** a estratégia Dunnigan, das referências, depende de ordem stop de entrada, que o robô ainda não envia.
+- **Stop de entrada:** é vigiado pelo robô, não fica como ordem pendente na corretora. Com o PC desligado, a entrada simplesmente não acontece (o que é seguro); o stop de proteção, depois da entrada, vai para a corretora como sempre.
 - **Mercado:** o MT5 fornece o histórico intradiário. O diário vem do Yahoo, uma fonte não oficial que pode ter falhas ou ajustes.

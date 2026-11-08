@@ -27,6 +27,9 @@ public enum DecisionOutcome
 
     /// <summary>A corretora não executou (ou não confirmou) a ordem.</summary>
     Failed = 8,
+
+    /// <summary>Stop de entrada armado: entra só se o preço cruzar o nível durante a barra seguinte.</summary>
+    Armed = 9,
 }
 
 /// <summary>O que o robô decidiu numa barra fechada de uma alocação, e por quê. Fica para conferência.</summary>

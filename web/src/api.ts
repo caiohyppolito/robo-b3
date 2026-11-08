@@ -558,7 +558,7 @@ export interface MarketWatch {
   items: WatchItem[];
 }
 
-export type DecisionOutcome = "NoSignal" | "Held" | "Entered" | "Exited" | "Blocked" | "Vetoed" | "Rejected" | "Failed";
+export type DecisionOutcome = "NoSignal" | "Held" | "Entered" | "Exited" | "Blocked" | "Vetoed" | "Rejected" | "Failed" | "Armed";
 
 export interface Decision {
   id: number;

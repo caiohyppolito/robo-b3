@@ -192,3 +192,80 @@ public sealed class EmaVwapStrategy(int fast, int slow, decimal stopPoints, deci
         return StrategySignal.Flat;
     }
 }
+
+/// <summary>
+/// Pullback de Dunnigan (ideia registrada a partir do NewRobot; reimplementada, sem código copiado):
+/// numa tendência (fechamento acima da média de <paramref name="trendPeriod"/>), uma sequência de pelo menos
+/// <paramref name="setupBars"/> barras com máximas e mínimas menores é a correção. Compra com STOP DE ENTRADA
+/// um pouco acima da máxima da última barra: só entra se o preço retomar a alta na barra seguinte.
+/// Stop abaixo da mínima da correção; alvo em múltiplos do risco. Espelhado para venda.
+/// Não aumenta a posição contra o preço (o original permitia; aqui é proibido).
+/// </summary>
+public sealed class DunniganPullbackStrategy(int setupBars, int trendPeriod, decimal offsetAtr, decimal targetR) : IStrategy
+{
+    public string Key => StrategyKeys.Dunnigan;
+
+    public int WarmupBars => Math.Max(trendPeriod, setupBars + 15) + 1;
+
+    public StrategySignal Evaluate(History history, PositionContext position)
+    {
+        if (position.Direction != PositionDirection.Flat)
+        {
+            // Sai pela corretora (stop/alvo) ou quando a tendência que justificou a entrada acaba.
+            var trend = Indicators.Sma(history, trendPeriod);
+            var broken = position.Direction == PositionDirection.Long ? history.Current.Close < trend : history.Current.Close > trend;
+            return broken ? StrategySignal.Flat : new StrategySignal(position.Direction);
+        }
+
+        var sma = Indicators.Sma(history, trendPeriod);
+        var offset = Indicators.Atr(history, 14) * offsetAtr;
+        var close = history.Current.Close;
+
+        if (close > sma && IsSequence(history, down: true))
+        {
+            var entry = history.Current.High + offset;
+            var stop = SetupExtreme(history, low: true) - offset;
+            var risk = entry - stop;
+            return risk > 0 ? new StrategySignal(PositionDirection.Long, stop, entry + (risk * targetR), entry) : StrategySignal.Flat;
+        }
+
+        if (close < sma && IsSequence(history, down: false))
+        {
+            var entry = history.Current.Low - offset;
+            var stop = SetupExtreme(history, low: false) + offset;
+            var risk = stop - entry;
+            return risk > 0 ? new StrategySignal(PositionDirection.Short, stop, entry - (risk * targetR), entry) : StrategySignal.Flat;
+        }
+
+        return StrategySignal.Flat;
+    }
+
+    /// <summary>Mínima (ou máxima) da correção, incluindo a barra atual.</summary>
+    private decimal SetupExtreme(History h, bool low)
+    {
+        var value = low ? h[0].Low : h[0].High;
+        for (var i = 1; i < setupBars; i++)
+        {
+            value = low ? Math.Min(value, h[i].Low) : Math.Max(value, h[i].High);
+        }
+
+        return value;
+    }
+
+    /// <summary>As últimas barras formam uma sequência de máximas e mínimas menores (ou maiores, para venda).</summary>
+    private bool IsSequence(History h, bool down)
+    {
+        for (var i = 0; i < setupBars; i++)
+        {
+            var bar = h[i];
+            var prev = h[i + 1];
+            var ok = down ? bar.High < prev.High && bar.Low < prev.Low : bar.High > prev.High && bar.Low > prev.Low;
+            if (!ok)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+}

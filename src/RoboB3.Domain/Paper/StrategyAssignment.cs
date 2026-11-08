@@ -77,6 +77,40 @@ public sealed class StrategyAssignment
     public void Disable() => IsEnabled = false;
 
     /// <returns>Falso se a barra já foi processada.</returns>
+    /// <summary>Stop de entrada armado: entra se o preço cruzar <see cref="ArmedLevel"/> até <see cref="ArmedUntil"/>.</summary>
+    public PositionDirection? ArmedDirection { get; private set; }
+
+    public decimal? ArmedLevel { get; private set; }
+
+    public decimal? ArmedStop { get; private set; }
+
+    public decimal? ArmedTarget { get; private set; }
+
+    public DateTimeOffset? ArmedUntil { get; private set; }
+
+    public void Arm(PositionDirection direction, decimal level, decimal? stop, decimal? target, DateTimeOffset until)
+    {
+        if (direction == PositionDirection.Flat)
+        {
+            throw new DomainException("Stop de entrada precisa de direção.");
+        }
+
+        ArmedDirection = direction;
+        ArmedLevel = Guard.Positive(level, nameof(level));
+        ArmedStop = stop;
+        ArmedTarget = target;
+        ArmedUntil = until;
+    }
+
+    public void Disarm()
+    {
+        ArmedDirection = null;
+        ArmedLevel = null;
+        ArmedStop = null;
+        ArmedTarget = null;
+        ArmedUntil = null;
+    }
+
     public bool MarkProcessed(DateTimeOffset barTime)
     {
         if (LastProcessedBar is { } last && barTime <= last)

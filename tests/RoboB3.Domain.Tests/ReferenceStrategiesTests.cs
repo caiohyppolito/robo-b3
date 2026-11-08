@@ -151,3 +151,81 @@ public class ReferenceStrategiesTests
         Assert.True(metrics.TurnoverPerYear > 0);
     }
 }
+
+public class EntryStopTests
+{
+    private static readonly StrategyParameters NoParameters = new(new Dictionary<string, decimal>());
+
+    private static ScriptedStrategy EntryStopAtThirdBar(decimal level, decimal stop, decimal? target = null) =>
+        new((h, p) =>
+        {
+            if (p.Direction != PositionDirection.Flat)
+            {
+                return new StrategySignal(p.Direction);
+            }
+
+            return h.Count == 3 ? new StrategySignal(PositionDirection.Long, stop, target, level) : StrategySignal.Flat;
+        });
+
+    [Fact]
+    public void Stop_de_entrada_executa_no_nivel_quando_a_barra_seguinte_toca()
+    {
+        // Barra 3: abre 102, máxima 103,03.
+        var bars = TestBars.Linear(10, 100m, 1m);
+
+        var result = BacktestEngine.Run(bars, EntryStopAtThirdBar(102.5m, 100m, 107.5m), NoParameters, BacktestEngineTests.Stock, BacktestEngineTests.Settings());
+
+        var trade = result.Trades[0];
+        Assert.Equal(bars[3].Date, trade.EntryDate);
+        Assert.Equal(102.5m, trade.EntryPrice);
+        Assert.Equal("alvo", trade.ExitReason);
+        Assert.Equal(107.5m, trade.ExitPrice);
+    }
+
+    [Fact]
+    public void Stop_de_entrada_nao_tocado_expira_sem_operacao()
+    {
+        var bars = TestBars.Linear(10, 100m, 1m);
+
+        var result = BacktestEngine.Run(bars, EntryStopAtThirdBar(110m, 100m), NoParameters, BacktestEngineTests.Stock, BacktestEngineTests.Settings());
+
+        Assert.Empty(result.Trades);
+    }
+
+    [Fact]
+    public void Gap_acima_do_nivel_executa_na_abertura()
+    {
+        var bars = TestBars.Linear(10, 100m, 1m);
+        bars[3] = bars[3] with { Open = 104m, High = 105m, Low = 103.5m };
+
+        var result = BacktestEngine.Run(bars, EntryStopAtThirdBar(102.5m, 100m), NoParameters, BacktestEngineTests.Stock, BacktestEngineTests.Settings());
+
+        Assert.Equal(104m, result.Trades[0].EntryPrice);
+    }
+
+    [Fact]
+    public void Dunnigan_arma_compra_acima_da_maxima_depois_de_correcao_na_alta()
+    {
+        // Alta longa, depois três barras com máximas e mínimas menores.
+        var closes = Enumerable.Range(0, 60).Select(i => 100m + i).Concat([158m, 157m, 156m, 155m]).ToArray();
+        var bars = TestBars.FromCloses(closes);
+        var strategy = new DunniganPullbackStrategy(3, 50, 0m, 2m);
+
+        var signal = strategy.Evaluate(new History(bars, bars.Count - 1), PositionContext.None);
+
+        Assert.Equal(PositionDirection.Long, signal.Target);
+        Assert.Equal(bars[^1].High, signal.EntryStop);
+        Assert.Equal(bars[^1].Low, signal.StopPrice);
+        Assert.Equal(signal.EntryStop + (2 * (signal.EntryStop - signal.StopPrice)), signal.TargetPrice);
+    }
+
+    [Fact]
+    public void Dunnigan_nao_arma_sem_correcao()
+    {
+        var bars = TestBars.Linear(70, 100m, 1m);
+
+        var signal = new DunniganPullbackStrategy(3, 50, 0.1m, 2m).Evaluate(new History(bars, bars.Count - 1), PositionContext.None);
+
+        Assert.Equal(PositionDirection.Flat, signal.Target);
+    }
+}

@@ -11,8 +11,12 @@ public enum PositionDirection
     Long = 1,
 }
 
-/// <summary>Posição desejada após o fechamento da barra atual, com stop e alvo opcionais.</summary>
-public sealed record StrategySignal(PositionDirection Target, decimal? StopPrice = null, decimal? TargetPrice = null)
+/// <summary>
+/// Posição desejada após o fechamento da barra atual, com stop e alvo opcionais.
+/// Com <paramref name="EntryStop"/>, a entrada só acontece se o preço tocar esse nível durante a barra seguinte
+/// (ordem stop de entrada: compra acima, venda abaixo); se não tocar, a ordem expira.
+/// </summary>
+public sealed record StrategySignal(PositionDirection Target, decimal? StopPrice = null, decimal? TargetPrice = null, decimal? EntryStop = null)
 {
     public static StrategySignal Flat { get; } = new(PositionDirection.Flat);
 }

@@ -365,10 +365,24 @@ public sealed partial class PaperTradingService(
         // Com o mercado fechado, a última barra do pregão já está completa e entra normalmente.
         var barLength = TimeSpan.FromMinutes((int)assignment.Timeframe);
         var closed = candles.Where(c => c.OpenTime + barLength <= cycle.Now).OrderBy(c => c.OpenTime).ToList();
-        if (closed.Count == 0 || !assignment.MarkProcessed(closed[^1].OpenTime))
+        if (closed.Count == 0)
         {
             return;
         }
+
+        if (!assignment.MarkProcessed(closed[^1].OpenTime))
+        {
+            // Entre uma barra e outra, só o stop de entrada armado pode agir.
+            if (assignment.ArmedDirection is not null)
+            {
+                await TriggerArmedEntryAsync(cycle, assignment, asset, instrument, contract, closed, cancellationToken);
+            }
+
+            return;
+        }
+
+        // Barra nova: o stop de entrada da barra anterior expira; a estratégia decide de novo.
+        assignment.Disarm();
 
         var strategy = assignment.CreateStrategy();
         var bars = Bar.FromCandles(closed);
@@ -434,10 +448,70 @@ public sealed partial class PaperTradingService(
             decision.Conclude(DecisionOutcome.Exited, $"Encerrou a posição {Describe(position.Direction)}: o sinal mudou para {Describe(target)}.");
         }
 
-        if (target != PositionDirection.Flat)
+        if (target == PositionDirection.Flat)
         {
-            await TryOpenAsync(cycle, assignment, asset, instrument, contract, quote, history, signal, target, decision, cancellationToken);
+            return;
         }
+
+        if (signal.EntryStop is { } level)
+        {
+            // Stop de entrada: não entra agora; arma até o fim da barra seguinte (mesma regra do backtest).
+            var rounded = instrument.RoundToTick(level);
+            assignment.Arm(target, rounded, signal.StopPrice, signal.TargetPrice, closed[^1].OpenTime + (barLength * 2));
+            cycle.Messages.Add($"{contract}: stop de entrada armado em {rounded:N2} ({Describe(target)}), válido até o fim da próxima barra.");
+            decision.Conclude(DecisionOutcome.Armed, $"Stop de entrada armado: {Describe(target)} se o preço cruzar {rounded:N2} até o fim da próxima barra.");
+            return;
+        }
+
+        await TryOpenAsync(cycle, assignment, asset, instrument, contract, quote, history, signal, target, decision, cancellationToken);
+    }
+
+    /// <summary>
+    /// Dispara o stop de entrada armado se a cotação cruzou o nível (compra no ask acima, venda no bid abaixo).
+    /// A entrada passa por todas as checagens de sempre: travas, horário, IA, tamanho e gestor de risco.
+    /// </summary>
+    private async Task TriggerArmedEntryAsync(
+        Cycle cycle,
+        StrategyAssignment assignment,
+        Asset asset,
+        InstrumentSpec instrument,
+        string contract,
+        IReadOnlyList<Candle> closed,
+        CancellationToken cancellationToken)
+    {
+        var direction = assignment.ArmedDirection!.Value;
+        var level = assignment.ArmedLevel!.Value;
+        if (cycle.Now > assignment.ArmedUntil || cycle.Positions.Any(p => p.AssignmentId == assignment.Id))
+        {
+            if (cycle.Now > assignment.ArmedUntil)
+            {
+                cycle.Messages.Add($"{contract}: stop de entrada em {level:N2} expirou sem ser tocado.");
+            }
+
+            assignment.Disarm();
+            return;
+        }
+
+        if (await FreshQuoteAsync(cycle, contract, cancellationToken) is not { } quote)
+        {
+            return;
+        }
+
+        var crossed = direction == PositionDirection.Long ? quote.Ask >= level : quote.Bid <= level;
+        if (!crossed)
+        {
+            return;
+        }
+
+        var bars = Bar.FromCandles(closed);
+        var history = new History(bars, bars.Count - 1);
+        var signal = new StrategySignal(direction, assignment.ArmedStop, assignment.ArmedTarget, level);
+        var decision = new TradingDecision(cycle.Now, cycle.Mode, assignment.Id, assignment.Symbol, contract, assignment.StrategyKey, closed[^1].OpenTime, direction);
+        decision.SetContext(assignment.Parameters, FeatureExtractor.TryExtract(history, direction)?.Values, CodeVersion.Current);
+        cycle.Decisions.Add(decision);
+        cycle.Messages.Add($"{contract}: preço cruzou o stop de entrada {level:N2}.");
+        assignment.Disarm();
+        await TryOpenAsync(cycle, assignment, asset, instrument, contract, quote, history, signal, direction, decision, cancellationToken);
     }
 
     private async Task TryOpenAsync(
@@ -493,7 +567,7 @@ public sealed partial class PaperTradingService(
 
         var isBuy = target == PositionDirection.Long;
         var price = quote.PriceFor(isBuy);
-        decimal? stopDistance = signal.StopPrice is { } signalStop ? Math.Abs(history.Current.Close - signalStop) : null;
+        decimal? stopDistance = signal.StopPrice is { } signalStop ? Math.Abs((signal.EntryStop ?? history.Current.Close) - signalStop) : null;
         var equity = cycle.Account.Equity(cycle.Positions);
         if (cycle.Mode.SendsToBroker())
         {
@@ -536,7 +610,7 @@ public sealed partial class PaperTradingService(
 
         decimal? stop = stopDistance is > 0 ? instrument.RoundToTick(price - ((int)target * stopDistance.Value)) : null;
         decimal? takeProfit = signal.TargetPrice is { } signalTarget
-            ? instrument.RoundToTick(price + ((int)target * Math.Abs(signalTarget - history.Current.Close)))
+            ? instrument.RoundToTick(price + ((int)target * Math.Abs(signalTarget - (signal.EntryStop ?? history.Current.Close))))
             : null;
         var instruction = new OrderInstruction(contract, side, quantity, price, stop, null, NewClientId("e"), $"entrada {assignment.StrategyKey}", takeProfit);
         decision.SetOrder(instruction.ClientOrderId);

@@ -320,9 +320,10 @@ public sealed class BacktestEngine
             return;
         }
 
-        var close = history.Current.Close;
-        _pending = new PendingOrder(target, signal.StopPrice is { } s ? Math.Abs(close - s) : null, features, probability,
-            signal.TargetPrice is { } t ? Math.Abs(t - close) : null);
+        // Distâncias de stop e alvo medidas a partir do preço de entrada pretendido: o fechamento ou o nível do stop de entrada.
+        var reference = signal.EntryStop ?? history.Current.Close;
+        _pending = new PendingOrder(target, signal.StopPrice is { } s ? Math.Abs(reference - s) : null, features, probability,
+            signal.TargetPrice is { } t ? Math.Abs(t - reference) : null, signal.EntryStop);
     }
 
     private void ExecutePending(Bar bar)
@@ -340,16 +341,29 @@ public sealed class BacktestEngine
             ClosePosition(bar.Open, bar, "sinal");
         }
 
-        if (order.Target != PositionDirection.Flat && _position is null)
+        if (order.Target == PositionDirection.Flat || _position is not null)
         {
-            OpenPosition(order, bar);
+            return;
+        }
+
+        if (order.EntryStop is not { } level)
+        {
+            OpenPosition(order, bar, bar.Open);
+            return;
+        }
+
+        // Stop de entrada: só executa se a barra tocar o nível; em gap além do nível, executa na abertura.
+        var isLong = order.Target == PositionDirection.Long;
+        if (isLong ? bar.High >= level : bar.Low <= level)
+        {
+            OpenPosition(order, bar, isLong ? Math.Max(bar.Open, level) : Math.Min(bar.Open, level));
         }
     }
 
-    private void OpenPosition(PendingOrder order, Bar bar)
+    private void OpenPosition(PendingOrder order, Bar bar, decimal referencePrice)
     {
         var isBuy = order.Target == PositionDirection.Long;
-        var price = _settings.Costs.Fill(bar.Open, isBuy);
+        var price = _settings.Costs.Fill(referencePrice, isBuy);
         var equity = _cash;
         var quantity = PositionSizer.Size(price, order.StopDistance, equity, _settings.RiskPerTradePercent, _instrument, _settings.Limits);
         if (quantity <= 0)
@@ -489,7 +503,7 @@ public sealed class BacktestEngine
 
     private static int MonthKey(DateOnly date) => (date.Year * 12) + date.Month;
 
-    private sealed record PendingOrder(PositionDirection Target, decimal? StopDistance, FeatureVector? Features, double? Probability, decimal? TargetDistance = null);
+    private sealed record PendingOrder(PositionDirection Target, decimal? StopDistance, FeatureVector? Features, double? Probability, decimal? TargetDistance = null, decimal? EntryStop = null);
 
     private sealed class Position(
         PositionDirection direction,
