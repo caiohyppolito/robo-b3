@@ -246,3 +246,11 @@ dotnet test
 - [x] **Fase 3, IA:** contexto de mercado por sinal, filtro de sinais com ML.NET, validação fora da amostra, promoção e aposentadoria automáticas, diário de operações, importância das variáveis e análise do Claude
 - [x] **Fase 4, paper trading:** conector só de leitura do MT5, conta simulada com preços reais, alocações de estratégias, day trade, diário da IA e backtest intradiário
 - [x] **Fase 5, execução no MT5:** modos simulado, demo e real com travas independentes, stop na corretora, conciliação a cada ciclo e auditoria de ordens
+- [x] **Fase 6, robustez e referências:** trava de ciclo, intenção de ordem com recuperação, zerar tudo, stop conferido na corretora, alvo de lucro, novas estratégias e métricas, CDI do Banco Central, Telegram, calibração e mudança de regime da IA, contrafactual dos vetos e interface nova (Gráfico, Histórico e Configurações)
+
+## Documentos
+
+- [docs/diagnostico.md](docs/diagnostico.md): diagnóstico, o que mudou, verificação, **critérios para ligar a conta real** e limitações
+- [docs/referencias.md](docs/referencias.md): projetos de referência analisados, licenças e o que foi aproveitado
+- [docs/teste-demo-ordens.md](docs/teste-demo-ordens.md): roteiro para conferir as ordens na conta demo antes de deixar o robô operar
+- [docs/telegram.md](docs/telegram.md): avisos e comandos pelo Telegram (opcional)
