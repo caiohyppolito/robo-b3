@@ -15,6 +15,7 @@ export function PortfolioPage() {
   const [weighting, setWeighting] = useState<PortfolioWeighting>("InverseVolatility");
   const [cap, setCap] = useState(20);
   const [trend, setTrend] = useState(false);
+  const [fractional, setFractional] = useState(true);
   const [capital, setCapital] = useState(100_000);
   const [from, setFrom] = useState(yearsAgo(3));
   const [result, setResult] = useState<PortfolioResponse | null>(null);
@@ -38,7 +39,7 @@ export function PortfolioPage() {
     setBusy(true);
     setError(null);
     try {
-      setResult(await portfolioApi.run({ symbols: selected, from, weighting, maxWeightPercent: cap, trendFilter: trend, initialCapital: capital }));
+      setResult(await portfolioApi.run({ symbols: selected, from, weighting, maxWeightPercent: cap, trendFilter: trend, initialCapital: capital, fractional }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha");
     } finally {
@@ -85,6 +86,10 @@ export function PortfolioPage() {
           <label className="checkbox">
             <input type="checkbox" checked={trend} onChange={(e) => setTrend(e.target.checked)} />
             Filtro de tendência: ativo abaixo da média de 200 dias fica fora (a fatia dele vai para o caixa)
+          </label>
+          <label className="checkbox">
+            <input type="checkbox" checked={fractional} onChange={(e) => setFractional(e.target.checked)} />
+            Mercado fracionário (ações de 1 em 1, como PETR4F); desligado, só lotes de 100
           </label>
         </div>
         <p className="muted small" style={{ margin: "0 0 0.4rem" }}>Ativos ({selected.length} de {assets.length}) · só ações e ETFs ligados com histórico</p>
@@ -139,6 +144,11 @@ export function PortfolioPage() {
                 </li>
               ))}
             </ul>
+            {last && last.notBought.length > 0 && (
+              <p className="callout warn" style={{ marginBottom: 0 }}>
+                Não couberam num lote no último rebalanceamento: {last.notBought.join(", ")}. Ligue o fracionário ou aumente o capital.
+              </p>
+            )}
             {result.skipped.length > 0 && <p className="muted small" style={{ marginBottom: 0 }}>Ignorados: {result.skipped.join(" · ")}</p>}
           </section>
         </>

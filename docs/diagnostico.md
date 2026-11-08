@@ -93,7 +93,8 @@ A conta real só deve ser considerada com **todos** os itens abaixo cumpridos. O
 - **Contrafactual dos vetos:** é uma aproximação. Refaz o sinal no histórico diário, mas o robô real poderia estar em outra situação, como já posicionado ou travado.
 - **Variáveis antigas no diário:** operações intradiárias registradas antes desta rodada continuam com variáveis calculadas em barras de minutos. Para não usá-las no treino, apague-as do diário ou retreine depois de acumular operações diárias.
 - **Estratégia nas execuções antigas:** execuções gravadas antes da coluna de estratégia aparecem sem ela no Histórico.
-- **Conciliação de notas de corretagem:** a conferência das notas da Clear e do IR contra a corretora (como faz o COIR) não foi feita. Fica como módulo separado, futuro, sem copiar código AGPL.
-- **Fora do escopo por enquanto:** carteira com alocação entre ativos (risk parity com limite por ativo) e varredura automática de ativos.
+- **Leitura das notas de corretagem:** o relatório de IR (tela Imposto de renda) apura as operações do robô com as regras conferidas contra o COIR. Ainda não lê as notas da Clear (PDF), não considera operações feitas fora do robô nem proventos, e estima o IRRF; vale o que está na nota.
+- **Carteira:** o backtest existe (tela Carteira), mas o robô ainda não executa carteira automaticamente; as alocações continuam por ativo.
+- **Varredura:** o universo amplo é uma lista de partida; códigos que mudaram aparecem como "sem dados" e podem ser desligados.
 - **Stop de entrada:** é vigiado pelo robô, não fica como ordem pendente na corretora. Com o PC desligado, a entrada simplesmente não acontece (o que é seguro); o stop de proteção, depois da entrada, vai para a corretora como sempre.
 - **Mercado:** o MT5 fornece o histórico intradiário. O diário vem do Yahoo, uma fonte não oficial que pode ter falhas ou ajustes.

@@ -246,6 +246,7 @@ dotnet test
 - [x] **Fase 3, IA:** contexto de mercado por sinal, filtro de sinais com ML.NET, validação fora da amostra, promoção e aposentadoria automáticas, diário de operações, importância das variáveis e análise do Claude
 - [x] **Fase 4, paper trading:** conector só de leitura do MT5, conta simulada com preços reais, alocações de estratégias, day trade, diário da IA e backtest intradiário
 - [x] **Fase 5, execução no MT5:** modos simulado, demo e real com travas independentes, stop na corretora, conciliação a cada ciclo e auditoria de ordens
+- [x] **Fase 7, pesquisa e fiscal:** stop de entrada e pullback de Dunnigan, varredura de ativos com universo amplo e filtro de liquidez, backtest de carteira com teto por ativo e fracionário, apuração mensal de IR com DARF
 - [x] **Fase 6, robustez e referências:** trava de ciclo, intenção de ordem com recuperação, zerar tudo, stop conferido na corretora, alvo de lucro, novas estratégias e métricas, CDI do Banco Central, Telegram, calibração e mudança de regime da IA, contrafactual dos vetos e interface nova (Gráfico, Histórico e Configurações)
 
 ## Documentos

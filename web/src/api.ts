@@ -723,7 +723,7 @@ export const scanApi = {
 };
 
 export type PortfolioWeighting = "Equal" | "InverseVolatility";
-export interface PortfolioRebalance { date: string; targetWeights: Record<string, number>; cashWeight: number; turnover: number; costs: number }
+export interface PortfolioRebalance { date: string; targetWeights: Record<string, number>; cashWeight: number; turnover: number; costs: number; notBought: string[] }
 export interface PortfolioResponse {
   from: string;
   to: string;
@@ -737,6 +737,34 @@ export interface PortfolioResponse {
   };
 }
 export const portfolioApi = {
-  run: (body: { symbols: string[]; from?: string; to?: string; weighting: PortfolioWeighting; maxWeightPercent: number; trendFilter: boolean; initialCapital: number }) =>
+  run: (body: { symbols: string[]; from?: string; to?: string; weighting: PortfolioWeighting; maxWeightPercent: number; trendFilter: boolean; initialCapital: number; fractional: boolean }) =>
     request<PortfolioResponse>("/api/backtests/portfolio", { method: "POST", body: JSON.stringify(body) }),
+};
+
+export interface TaxMonth {
+  year: number;
+  month: number;
+  stockSales: number;
+  stockExempt: boolean;
+  exemptProfit: number;
+  swingResult: number;
+  dayTradeResult: number;
+  swingLossUsed: number;
+  dayTradeLossUsed: number;
+  swingLossCarry: number;
+  dayTradeLossCarry: number;
+  swingTax: number;
+  dayTradeTax: number;
+  irrfWithheld: number;
+  irrfDeducted: number;
+  irrfCarry: number;
+  taxDue: number;
+  carriedFromPrevious: number;
+  darfAmount: number;
+  darfDueDate: string | null;
+  trades: number;
+}
+export interface TaxReport { mode: ExecutionMode; year: number; months: TaxMonth[]; totalDarf: number; totalExemptProfit: number; darfCode: string }
+export const taxApi = {
+  report: (mode: ExecutionMode, year: number) => request<TaxReport>(`/api/tax/report?mode=${mode}&year=${year}`),
 };

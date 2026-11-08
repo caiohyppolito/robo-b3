@@ -21,11 +21,13 @@ public sealed record PortfolioSettings(
     decimal RiskFreeRatePercent,
     RiskFreeCurve? RiskFreeCurve = null,
     int VolatilityLookback = 60,
-    int TrendPeriod = 200);
+    int TrendPeriod = 200,
+    bool Fractional = true);
 
 public sealed record PortfolioAsset(InstrumentSpec Instrument, IReadOnlyList<Bar> Bars);
 
-public sealed record PortfolioRebalance(DateOnly Date, IReadOnlyDictionary<string, decimal> TargetWeights, decimal CashWeight, decimal Turnover, decimal Costs);
+/// <param name="NotBought">Ativos com peso-alvo que não couberam num lote (com o fracionário desligado ou capital pequeno).</param>
+public sealed record PortfolioRebalance(DateOnly Date, IReadOnlyDictionary<string, decimal> TargetWeights, decimal CashWeight, decimal Turnover, decimal Costs, IReadOnlyList<string> NotBought);
 
 public sealed record PortfolioResult(
     IReadOnlyList<EquityPoint> Equity,
@@ -107,6 +109,7 @@ public static class PortfolioBacktest
                 var targets = TargetWeights(assets, lookup, date, settings, cap);
                 var equityAtOpen = cash + assets.Sum(a => holdings[a.Instrument.Symbol] * OpenOrLast(a, lookup, date, lastClose) * a.Instrument.Multiplier);
                 decimal traded = 0, cost = 0;
+                var notBought = new List<string>();
 
                 // Vende primeiro (libera caixa), depois compra.
                 foreach (var sellFirst in new[] { true, false })
@@ -121,8 +124,14 @@ public static class PortfolioBacktest
 
                         var open = asset.Bars[index].Open;
                         var weight = targets.GetValueOrDefault(symbol);
-                        var lot = asset.Instrument.LotSize;
+                        // No fracionário (código com F) ações andam de 1 em 1; no lote padrão, de 100 em 100.
+                        var lot = settings.Fractional ? 1 : asset.Instrument.LotSize;
                         var desired = (int)Math.Floor(equityAtOpen * weight / (open * asset.Instrument.Multiplier) / lot) * lot;
+                        if (sellFirst && weight > 0 && desired == 0)
+                        {
+                            notBought.Add(symbol);
+                        }
+
                         var delta = desired - holdings[symbol];
                         if (delta == 0 || (delta < 0) != sellFirst)
                         {
@@ -155,7 +164,7 @@ public static class PortfolioBacktest
 
                 costsPaid += cost;
                 rebalances.Add(new PortfolioRebalance(date, targets, Math.Round(1m - targets.Values.Sum(), 4),
-                    equityAtOpen > 0 ? Math.Round(traded / equityAtOpen, 4) : 0, Math.Round(cost, 2)));
+                    equityAtOpen > 0 ? Math.Round(traded / equityAtOpen, 4) : 0, Math.Round(cost, 2), notBought));
             }
 
             foreach (var asset in assets)

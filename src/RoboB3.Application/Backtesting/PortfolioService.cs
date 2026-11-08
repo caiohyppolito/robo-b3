@@ -11,7 +11,8 @@ public sealed record PortfolioRequest(
     PortfolioWeighting Weighting = PortfolioWeighting.InverseVolatility,
     decimal MaxWeightPercent = 20m,
     bool TrendFilter = false,
-    decimal InitialCapital = 100_000m);
+    decimal InitialCapital = 100_000m,
+    bool Fractional = true);
 
 public sealed record PortfolioResponse(
     DateOnly From,
@@ -64,7 +65,7 @@ public sealed class PortfolioService(BacktestService backtests)
 
         var settings = await backtests.BuildSettingsAsync(new SimulationSettings(), cancellationToken, period: (from, to));
         var portfolio = new PortfolioSettings(request.InitialCapital, request.Weighting, request.MaxWeightPercent, request.TrendFilter,
-            settings.Costs, settings.RiskFreeRatePercent, settings.RiskFreeCurve);
+            settings.Costs, settings.RiskFreeRatePercent, settings.RiskFreeCurve, Fractional: request.Fractional);
         return new PortfolioResponse(from, to, PortfolioBacktest.Run(assets, portfolio, from), skipped);
     }
 }

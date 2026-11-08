@@ -86,3 +86,39 @@ public class ScreensTests
         Assert.Contains("MetaTrader 5", ex.Message, StringComparison.Ordinal);
     }
 }
+
+public class TaxReportServiceTests
+{
+    [Fact]
+    public async Task Ir_classifica_day_trade_acoes_e_units_e_usa_o_multiplicador_dos_futuros()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 11, 9, 17, 0, 0, TimeSpan.Zero));
+        await using var db = new RoboB3DbContext(new DbContextOptionsBuilder<RoboB3DbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        await new DatabaseInitializer(db, clock, NullLogger<DatabaseInitializer>.Instance).InitializeAsync(false, CancellationToken.None);
+        var day = new DateTimeOffset(2026, 3, 10, 14, 0, 0, TimeSpan.Zero);
+        void Pair(string symbol, OrderSide entrySide, int qty, decimal entry, decimal exit, decimal profit, DateTimeOffset entryTime, DateTimeOffset exitTime)
+        {
+            var id = Guid.NewGuid();
+            var exitSide = entrySide == OrderSide.Buy ? OrderSide.Sell : OrderSide.Buy;
+            db.PaperFills.Add(new PaperFill(id, symbol, entrySide, qty, entry, 0m, null, "entrada", entryTime, ExecutionMode.Mt5Real));
+            db.PaperFills.Add(new PaperFill(id, symbol, exitSide, qty, exit, 0m, profit, "sinal", exitTime, ExecutionMode.Mt5Real));
+        }
+
+        Pair("WINJ26", OrderSide.Buy, 2, 130_000m, 130_500m, 200m, day, day.AddHours(2));           // day trade: 20%
+        Pair("PETR4", OrderSide.Buy, 1000, 30m, 32m, 2_000m, day.AddDays(-5), day);                 // ações: vendas 32 mil, sem isenção
+        Pair("BPAC11", OrderSide.Buy, 100, 40m, 45m, 500m, day.AddDays(-5), day);                   // unit: sem isenção
+        await db.SaveChangesAsync();
+
+        var service = new TaxReportService(new TradeHistoryService(new PaperRepository(db)), new AssetRepository(db));
+        var report = await service.ReportAsync(ExecutionMode.Mt5Real, 2026, CancellationToken.None);
+
+        var march = Assert.Single(report.Months);
+        Assert.Equal(32_000m, march.StockSales);
+        Assert.False(march.StockExempt);
+        Assert.Equal(2_500m, march.SwingResult);
+        Assert.Equal(200m, march.DayTradeResult);
+        Assert.Equal(375m, march.SwingTax);
+        Assert.Equal(40m, march.DayTradeTax);
+        Assert.Equal("6015", report.DarfCode);
+    }
+}

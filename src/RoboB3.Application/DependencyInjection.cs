@@ -31,6 +31,7 @@ public static class DependencyInjection
         services.AddScoped<VetoReviewService>();
         services.AddScoped<ScannerService>();
         services.AddScoped<PortfolioService>();
+        services.AddScoped<TaxReportService>();
         services.AddSingleton<SimulatedOrderExecutor>();
         services.AddScoped<StrategyComparisonService>();
         services.AddSingleton<TelegramConfirmations>();

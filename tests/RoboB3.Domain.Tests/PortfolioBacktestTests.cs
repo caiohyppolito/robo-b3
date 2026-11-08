@@ -88,3 +88,22 @@ public class PortfolioBacktestTests
         Assert.Throws<DomainException>(() => PortfolioBacktest.Run([future], Settings(), future.Bars[0].Date));
     }
 }
+
+public class PortfolioLotTests
+{
+    [Fact]
+    public void Lote_padrao_caro_nao_cabe_mas_o_fracionario_compra()
+    {
+        var expensive = new PortfolioAsset(new InstrumentSpec("CARO3", AssetClass.Stock, 100, 1m, false),
+            TestBars.FromCloses(Enumerable.Repeat(600m, 300).ToArray()));
+        var settings = new PortfolioSettings(100_000m, PortfolioWeighting.Equal, 20m, false, new CostModel(0, 0, 0, 0), 0m);
+
+        var standard = PortfolioBacktest.Run([expensive], settings with { Fractional = false }, expensive.Bars[100].Date);
+        var fractional = PortfolioBacktest.Run([expensive], settings, expensive.Bars[100].Date);
+
+        Assert.Equal(["CARO3"], standard.Rebalances[0].NotBought);
+        Assert.Equal(0m, standard.FinalWeights["CARO3"]);
+        Assert.Empty(fractional.Rebalances[0].NotBought);
+        Assert.Equal(0.198m, fractional.FinalWeights["CARO3"]);
+    }
+}

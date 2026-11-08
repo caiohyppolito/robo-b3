@@ -130,6 +130,9 @@ internal static class PaperEndpoints
         app.MapGet("/api/history/trades", (TradeHistoryService history, CancellationToken ct, ExecutionMode? mode, string? symbol, int count = 300) =>
             history.ListAsync(mode, symbol, count, ct)).WithTags("Operação");
 
+        app.MapGet("/api/tax/report", (TaxReportService taxes, CancellationToken ct, ExecutionMode mode = ExecutionMode.Mt5Real, int? year = null) =>
+            taxes.ReportAsync(mode, year ?? DateTime.UtcNow.Year, ct)).WithTags("Operação");
+
         app.MapGet("/api/market/watch", (MarketWatchService service, CancellationToken ct) => service.GetAsync(ct)).WithTags("Operação");
 
         app.MapGet("/api/feed/status", (IMarketDataFeed feed, CancellationToken ct) => feed.GetStatusAsync(ct)).WithTags("Operação");
