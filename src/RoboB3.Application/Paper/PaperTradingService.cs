@@ -495,10 +495,28 @@ public sealed partial class PaperTradingService(
         var price = quote.PriceFor(isBuy);
         decimal? stopDistance = signal.StopPrice is { } signalStop ? Math.Abs(history.Current.Close - signalStop) : null;
         var equity = cycle.Account.Equity(cycle.Positions);
+        if (cycle.Mode.SendsToBroker())
+        {
+            // Na corretora o tamanho segue o saldo real da conta: usa o menor entre o livro do robô e o patrimônio
+            // de agora no MT5 (que muda com depósitos, saques ou operações manuais).
+            if (await BrokerEquityAsync(cycle, cancellationToken) is not { } brokerEquity)
+            {
+                cycle.Messages.Add($"{contract}: patrimônio da conta indisponível no MT5; entrada adiada.");
+                decision.Conclude(DecisionOutcome.Blocked, "Patrimônio da conta indisponível no MT5: sem ele não há como dimensionar a posição.");
+                return;
+            }
+
+            equity = Math.Min(equity, brokerEquity);
+        }
+
+        var equityNote = cycle.Mode.SendsToBroker()
+            ? $"patrimônio usado {equity.ToString("C0", PtBr)} (menor entre o livro do robô e o saldo da conta no MT5); "
+            : string.Empty;
+
         var otherContracts = cycle.Positions.Where(p => p.IsFuture).Sum(p => p.Quantity);
         var sizing = PositionSizer.Explain(price, stopDistance, equity, options.RiskPerTradePercent, instrument, cycle.Limits, otherContracts);
         var quantity = sizing.Quantity;
-        decision.SetSizing(sizing.Explanation);
+        decision.SetSizing(equityNote + sizing.Explanation);
         if (quantity <= 0)
         {
             cycle.Messages.Add($"{contract}: tamanho calculado menor que um lote.");
@@ -623,6 +641,26 @@ public sealed partial class PaperTradingService(
         return (result, intent);
     }
 
+    private static readonly System.Globalization.CultureInfo PtBr = System.Globalization.CultureInfo.GetCultureInfo("pt-BR");
+
+    private static async Task<decimal?> BrokerEquityAsync(Cycle cycle, CancellationToken cancellationToken)
+    {
+        if (!cycle.BrokerEquityLoaded)
+        {
+            cycle.BrokerEquityLoaded = true;
+            try
+            {
+                cycle.BrokerEquity = await cycle.Executor.GetEquityAsync(cancellationToken) is > 0 and var value ? value : null;
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+            {
+                cycle.BrokerEquity = null;
+            }
+        }
+
+        return cycle.BrokerEquity;
+    }
+
     private static string NewClientId(string kind) => $"{kind}-{Guid.NewGuid():N}";
 
     private async Task<Quote?> FreshQuoteAsync(Cycle cycle, string symbol, CancellationToken cancellationToken)
@@ -671,6 +709,11 @@ public sealed partial class PaperTradingService(
         RiskLimits limits)
     {
         public DateTimeOffset Now { get; } = now;
+
+        /// <summary>Patrimônio da conta no MT5, lido uma vez por ciclo.</summary>
+        public decimal? BrokerEquity { get; set; }
+
+        public bool BrokerEquityLoaded { get; set; }
 
         public ExecutionMode Mode { get; } = mode;
 

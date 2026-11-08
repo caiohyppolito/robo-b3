@@ -445,6 +445,34 @@ public class PaperTradingTests
     }
 
     [Fact]
+    public async Task No_mt5_o_tamanho_segue_o_saldo_atual_da_conta()
+    {
+        await AssignInDemoAsync();
+        _db.PaperAccounts.Add(Domain.Paper.PaperAccount.Open(1_000_000m, _clock.GetUtcNow(), Domain.Execution.ExecutionMode.Mt5Demo));
+        await _db.SaveChangesAsync();
+        _broker.Equity = 50_000m;
+
+        await Service().RunCycleAsync(CancellationToken.None);
+
+        var decision = await _db.TradingDecisions.SingleAsync();
+        Assert.StartsWith("patrimônio usado R$ 50.000", decision.Sizing, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Sem_saldo_da_conta_no_mt5_a_entrada_e_adiada()
+    {
+        await AssignInDemoAsync();
+        _db.PaperAccounts.Add(Domain.Paper.PaperAccount.Open(50_000m, _clock.GetUtcNow(), Domain.Execution.ExecutionMode.Mt5Demo));
+        await _db.SaveChangesAsync();
+        _broker.Equity = 0m;
+
+        var report = await Service().RunCycleAsync(CancellationToken.None);
+
+        Assert.Equal(0, report.Opened);
+        Assert.Contains(report.Messages, m => m.Contains("patrimônio da conta indisponível", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Stop_nao_registrado_na_corretora_trava_novas_entradas_mas_mantem_a_posicao()
     {
         // Alta de 1 ponto por barra com amplitude pequena: o fechamento rompe a máxima do canal.
