@@ -9,6 +9,16 @@ internal static class MarketDataEndpoints
     {
         var group = app.MapGroup("/api/assets").WithTags("Market data");
 
+        // CDI do Banco Central: o último dia gravado e uma atualização sob demanda.
+        app.MapGet("/api/cdi", async (Application.MarketData.RiskFreeRateService cdi, CancellationToken ct) =>
+            await cdi.GetLatestAsync(ct) is { } latest
+                ? Results.Ok(new { latest.Date, latest.DailyPercent, latest.AnnualizedPercent, Source = "Banco Central (SGS 12)" })
+                : Results.Ok(new { Date = (DateOnly?)null, DailyPercent = (decimal?)null, AnnualizedPercent = (decimal?)null, Source = "taxa fixa configurada" }))
+            .WithTags("Market data");
+        app.MapPost("/api/cdi/sync", async (Application.MarketData.RiskFreeRateService cdi, CancellationToken ct) =>
+            new { Saved = await cdi.SyncAsync(ct) })
+            .WithTags("Market data");
+
         group.MapGet("/", async (IAssetRepository assets, CancellationToken ct) =>
             (await assets.ListAsync(onlyActive: false, ct)).Select(AssetDto.From));
 

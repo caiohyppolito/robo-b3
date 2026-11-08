@@ -291,7 +291,7 @@ public sealed partial class LearningService(
         MetaModel? champion,
         CancellationToken cancellationToken)
     {
-        var settings = await backtests.BuildSettingsAsync(new SimulationSettings(), cancellationToken);
+        var settings = await backtests.BuildSettingsAsync(new SimulationSettings(), cancellationToken, period: (HistoryStart, DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime)));
         var threshold = learningOptions.Value.Threshold;
         var parameters = definition.DefaultParameters();
         var candidateFilter = new ThresholdSignalFilter(candidate, threshold);

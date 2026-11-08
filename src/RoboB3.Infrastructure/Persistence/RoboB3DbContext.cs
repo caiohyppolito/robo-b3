@@ -41,6 +41,8 @@ public sealed class RoboB3DbContext(DbContextOptions<RoboB3DbContext> options) :
 
     public DbSet<ResearchExperiment> ResearchExperiments => Set<ResearchExperiment>();
 
+    public DbSet<Domain.MarketData.CdiRate> CdiRates => Set<Domain.MarketData.CdiRate>();
+
     public DbSet<Domain.Execution.ExecutionSettings> ExecutionSettings => Set<Domain.Execution.ExecutionSettings>();
 
     Task IUnitOfWork.SaveChangesAsync(CancellationToken cancellationToken) => SaveChangesAsync(cancellationToken);

@@ -20,7 +20,8 @@ public sealed class BacktestService(
     IMetaModelRepository metaModels,
     IMetaModelEngine metaModelEngine,
     IOptions<BacktestOptions> options,
-    TimeProvider clock)
+    TimeProvider clock,
+    MarketData.ICdiRepository? cdi = null)
 {
     /// <summary>Histórico extra antes do início, para aquecer indicadores longos (ex.: média de 200).</summary>
     public const int WarmupCalendarDays = 450;
@@ -42,7 +43,7 @@ public sealed class BacktestService(
 
         var (asset, bars) = await LoadBarsAsync(request.Symbol, from, to, cancellationToken, request.Timeframe);
         var startIndex = FirstIndexOnOrAfter(bars, from);
-        var settings = await BuildSettingsAsync(request.Settings, cancellationToken, request.FlattenAtDayEnd);
+        var settings = await BuildSettingsAsync(request.Settings, cancellationToken, request.FlattenAtDayEnd, (from, to));
 
         var (modelId, filter) = request.UseMetaModel ? await ActiveFilterAsync(definition.Key, cancellationToken) : (null, null);
         var result = BacktestEngine.Run(bars, definition.Create(parameters), parameters, InstrumentSpec.For(asset), settings, startIndex, filter);
@@ -88,7 +89,15 @@ public sealed class BacktestService(
         return (asset, Bar.FromCandles(data));
     }
 
-    internal async Task<BacktestSettings> BuildSettingsAsync(SimulationSettings simulation, CancellationToken cancellationToken, bool flattenAtDayEnd = false)
+    /// <summary>
+    /// Sem taxa informada na simulação, usa o CDI diário real do Banco Central no período (se já baixado);
+    /// a taxa fixa configurada fica só como reserva.
+    /// </summary>
+    internal async Task<BacktestSettings> BuildSettingsAsync(
+        SimulationSettings simulation,
+        CancellationToken cancellationToken,
+        bool flattenAtDayEnd = false,
+        (DateOnly From, DateOnly To)? period = null)
     {
         ArgumentNullException.ThrowIfNull(simulation);
         var current = (await riskSettings.GetAsync(cancellationToken)).Limits;
@@ -103,6 +112,16 @@ public sealed class BacktestService(
             current.MaxFuturesContracts);
 
         var defaults = options.Value;
+        RiskFreeCurve? curve = null;
+        if (simulation.RiskFreeRatePercent is null && cdi is not null && period is { } p)
+        {
+            var rates = await cdi.ListAsync(p.From.AddDays(-WarmupCalendarDays), p.To, cancellationToken);
+            if (rates.Count > 0)
+            {
+                curve = new RiskFreeCurve(rates.Select(r => new KeyValuePair<DateOnly, decimal>(r.Date, r.DailyPercent)), defaults.RiskFreeRatePercent);
+            }
+        }
+
         return new BacktestSettings(
             simulation.InitialCapital,
             simulation.RiskPerTradePercent,
@@ -110,7 +129,8 @@ public sealed class BacktestService(
             defaults.Costs(),
             simulation.RiskFreeRatePercent ?? defaults.RiskFreeRatePercent,
             simulation.ApplyTaxes,
-            flattenAtDayEnd: flattenAtDayEnd);
+            flattenAtDayEnd: flattenAtDayEnd,
+            riskFreeCurve: curve);
     }
 
     internal (DateOnly From, DateOnly To) ResolvePeriod(DateOnly? from, DateOnly? to)

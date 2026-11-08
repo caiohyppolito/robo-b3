@@ -17,7 +17,20 @@ public sealed partial class MarketDataWorker(
     {
         var result = await services.GetRequiredService<MarketDataIngestionService>().IngestDailyAsync(stoppingToken);
         LogResult(result.AssetsProcessed, result.CandlesSaved, result.Failures.Count);
+
+        // CDI do Banco Central: falha aqui não atrapalha a coleta de preços.
+        try
+        {
+            await services.GetRequiredService<RiskFreeRateService>().SyncAsync(stoppingToken);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException or FormatException)
+        {
+            LogCdiFailed(ex.Message);
+        }
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "CDI do Banco Central indisponível: {Message}. O backtest usa a taxa fixa configurada.")]
+    private partial void LogCdiFailed(string message);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Coleta concluída: {Assets} ativos, {Candles} candles gravados, {Failures} falhas")]
     private partial void LogResult(int assets, int candles, int failures);

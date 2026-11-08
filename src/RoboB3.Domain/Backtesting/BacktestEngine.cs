@@ -99,8 +99,8 @@ public sealed class BacktestEngine
     private BacktestResult Execute(int first)
     {
         var startClose = _bars[first].Close;
-        var riskFreeDaily = Math.Pow(1d + ((double)_settings.RiskFreeRatePercent / 100d), 1d / PerformanceMetrics.TradingDaysPerYear);
-        var dailyInterest = (decimal)riskFreeDaily - 1m;
+        var constantDaily = RiskFreeCurve.Constant(_settings.RiskFreeRatePercent);
+        var riskFreeIndex = 1m;
         var dayStartEquity = _settings.InitialCapital;
         var lastEquity = _settings.InitialCapital;
         var tradingDay = 0;
@@ -117,6 +117,10 @@ public sealed class BacktestEngine
                 // Juros, CDI e limite de perda diária andam por pregão, não por barra (vale para barras intradiárias).
                 tradingDay++;
                 dayStartEquity = lastEquity;
+
+                // O caixa rende o CDI do dia útil que acabou de passar.
+                var dailyInterest = _settings.RiskFreeCurve?.DailyRate(_bars[i - 1].Date) ?? constantDaily;
+                riskFreeIndex *= 1m + dailyInterest;
                 EarnInterest(dailyInterest);
                 PayTaxesOnMonthChange(bar.Date);
             }
@@ -148,7 +152,7 @@ public sealed class BacktestEngine
                 bar.Date,
                 Math.Round(equity, 2),
                 Math.Round(_settings.InitialCapital * bar.Close / startClose, 2),
-                Math.Round(_settings.InitialCapital * (decimal)Math.Pow(riskFreeDaily, tradingDay), 2)));
+                Math.Round(_settings.InitialCapital * riskFreeIndex, 2)));
 
             if (isLastBar)
             {
@@ -177,8 +181,12 @@ public sealed class BacktestEngine
         _monthTrades.Clear();
         _equity[^1] = _equity[^1] with { Equity = Math.Round(_cash, 2) };
 
+        // Com a série real, o Sharpe desconta o CDI médio efetivo do período.
+        var riskFreePercent = _settings.RiskFreeCurve is not null && tradingDay > 0
+            ? Math.Round(((decimal)Math.Pow((double)riskFreeIndex, (double)PerformanceMetrics.TradingDaysPerYear / tradingDay) - 1m) * 100m, 4)
+            : _settings.RiskFreeRatePercent;
         var metrics = PerformanceMetrics.Calculate(
-            _equity, _trades, _barsInPosition, totalBars, _costsPaid, _taxesPaid, _interestEarned, _settings.RiskFreeRatePercent)
+            _equity, _trades, _barsInPosition, totalBars, _costsPaid, _taxesPaid, _interestEarned, riskFreePercent)
             with { SignalsFiltered = _signalsFiltered };
         return new BacktestResult(_instrument.Symbol, _strategy.Key, _parameters, _trades, _equity, _events, metrics);
     }

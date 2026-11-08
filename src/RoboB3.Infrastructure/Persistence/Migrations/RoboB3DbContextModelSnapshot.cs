@@ -629,6 +629,20 @@ namespace RoboB3.Infrastructure.Persistence.Migrations
                     b.ToTable("Candles", "robo");
                 });
 
+            modelBuilder.Entity("RoboB3.Domain.MarketData.CdiRate", b =>
+                {
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<decimal>("DailyPercent")
+                        .HasPrecision(12, 8)
+                        .HasColumnType("decimal(12,8)");
+
+                    b.HasKey("Date");
+
+                    b.ToTable("CdiRates", "robo");
+                });
+
             modelBuilder.Entity("RoboB3.Domain.Paper.PaperAccount", b =>
                 {
                     b.Property<int>("Id")

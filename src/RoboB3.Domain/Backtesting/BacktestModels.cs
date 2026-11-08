@@ -14,7 +14,8 @@ public sealed record BacktestSettings
         decimal riskFreeRatePercent,
         bool applyTaxes,
         bool earnRiskFreeOnCash = true,
-        bool flattenAtDayEnd = false)
+        bool flattenAtDayEnd = false,
+        RiskFreeCurve? riskFreeCurve = null)
     {
         InitialCapital = Guard.Positive(initialCapital, nameof(initialCapital));
         RiskPerTradePercent = Guard.Percentage(riskPerTradePercent, nameof(riskPerTradePercent));
@@ -24,7 +25,11 @@ public sealed record BacktestSettings
         ApplyTaxes = applyTaxes;
         EarnRiskFreeOnCash = earnRiskFreeOnCash;
         FlattenAtDayEnd = flattenAtDayEnd;
+        RiskFreeCurve = riskFreeCurve;
     }
+
+    /// <summary>CDI diário real (Banco Central). Sem ele, usa <see cref="RiskFreeRatePercent"/> constante.</summary>
+    public RiskFreeCurve? RiskFreeCurve { get; }
 
     public decimal InitialCapital { get; }
 

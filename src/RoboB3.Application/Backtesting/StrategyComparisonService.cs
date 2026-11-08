@@ -32,7 +32,7 @@ public sealed class StrategyComparisonService(
         }
 
         var (from, to) = backtests.ResolvePeriod(request.From, request.To);
-        var settings = await backtests.BuildSettingsAsync(request.Settings, cancellationToken);
+        var settings = await backtests.BuildSettingsAsync(request.Settings, cancellationToken, period: (from, to));
         var symbols = request.Symbols is { Count: > 0 }
             ? request.Symbols
             : (await assets.ListAsync(onlyActive: true, cancellationToken))

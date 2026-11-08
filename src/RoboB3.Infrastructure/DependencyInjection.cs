@@ -61,6 +61,7 @@ public static class DependencyInjection
         services.AddScoped<IOrderExecutorFactory, OrderExecutorFactory>();
         services.AddScoped<IOrderIntentRepository, OrderIntentRepository>();
         services.AddScoped<IExperimentRepository, ExperimentRepository>();
+        services.AddScoped<Application.MarketData.ICdiRepository, CdiRepository>();
         services.AddScoped<ITradingLock, SqlServerTradingLock>();
         services.AddOptions<ExecutionOptions>().Bind(configuration.GetSection(ExecutionOptions.SectionName));
 
@@ -91,6 +92,13 @@ public static class DependencyInjection
                 }
             })
             .AddStandardResilienceHandler();
+        services.AddHttpClient<Application.MarketData.ICdiProvider, MarketData.Bcb.BcbCdiProvider>(client =>
+            {
+                client.BaseAddress = new Uri("https://api.bcb.gov.br/");
+                client.Timeout = TimeSpan.FromSeconds(60);
+            })
+            .AddStandardResilienceHandler();
+
         services.AddOptions<Application.Notifications.TelegramOptions>()
             .Bind(configuration.GetSection(Application.Notifications.TelegramOptions.SectionName));
 

@@ -63,3 +63,14 @@ internal sealed class ResearchExperimentConfiguration : IEntityTypeConfiguration
         builder.HasIndex(e => e.CreatedAt);
     }
 }
+
+internal sealed class CdiRateConfiguration : IEntityTypeConfiguration<Domain.MarketData.CdiRate>
+{
+    public void Configure(EntityTypeBuilder<Domain.MarketData.CdiRate> builder)
+    {
+        builder.ToTable("CdiRates");
+        builder.HasKey(r => r.Date);
+        builder.Property(r => r.DailyPercent).HasPrecision(12, 8);
+        builder.Ignore(r => r.AnnualizedPercent);
+    }
+}
