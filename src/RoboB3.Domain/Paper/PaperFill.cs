@@ -12,7 +12,7 @@ public sealed class PaperFill
         Reason = string.Empty;
     }
 
-    public PaperFill(Guid positionId, string symbol, OrderSide side, int quantity, decimal price, decimal cost, decimal? realizedProfit, string reason, DateTimeOffset time, ExecutionMode mode = ExecutionMode.Paper)
+    public PaperFill(Guid positionId, string symbol, OrderSide side, int quantity, decimal price, decimal cost, decimal? realizedProfit, string reason, DateTimeOffset time, ExecutionMode mode = ExecutionMode.Paper, string? strategyKey = null)
     {
         Mode = mode;
         PositionId = positionId;
@@ -24,7 +24,11 @@ public sealed class PaperFill
         RealizedProfit = realizedProfit;
         Reason = reason;
         Time = time;
+        StrategyKey = strategyKey;
     }
+
+    /// <summary>Estratégia que abriu a posição (nulo em execuções gravadas antes deste campo existir).</summary>
+    public string? StrategyKey { get; private set; }
 
     public long Id { get; private set; }
 

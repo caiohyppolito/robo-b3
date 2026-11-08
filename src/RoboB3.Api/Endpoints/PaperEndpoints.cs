@@ -124,6 +124,12 @@ internal static class PaperEndpoints
 {
     public static IEndpointRouteBuilder MapPaperEndpoints(this IEndpointRouteBuilder app)
     {
+        app.MapGet("/api/market/chart/{symbol}", (string symbol, Application.MarketData.ChartService charts, CancellationToken ct, Timeframe timeframe = Timeframe.M5, int count = 300) =>
+            charts.GetAsync(symbol, timeframe, count, ct)).WithTags("Operação");
+
+        app.MapGet("/api/history/trades", (TradeHistoryService history, CancellationToken ct, ExecutionMode? mode, string? symbol, int count = 300) =>
+            history.ListAsync(mode, symbol, count, ct)).WithTags("Operação");
+
         app.MapGet("/api/market/watch", (MarketWatchService service, CancellationToken ct) => service.GetAsync(ct)).WithTags("Operação");
 
         app.MapGet("/api/feed/status", (IMarketDataFeed feed, CancellationToken ct) => feed.GetStatusAsync(ct)).WithTags("Operação");

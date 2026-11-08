@@ -106,7 +106,7 @@ public sealed class PaperAccount
         Cash -= cost;
         CostsPaid += cost;
 
-        var fill = new PaperFill(position.Id, contractSymbol, isBuy ? OrderSide.Buy : OrderSide.Sell, quantity, Math.Round(price, 4), Math.Round(cost, 2), null, "entrada", time, Mode);
+        var fill = new PaperFill(position.Id, contractSymbol, isBuy ? OrderSide.Buy : OrderSide.Sell, quantity, Math.Round(price, 4), Math.Round(cost, 2), null, "entrada", time, Mode, strategyKey);
         return (position, fill);
     }
 
@@ -143,7 +143,7 @@ public sealed class PaperAccount
             Math.Round(position.MaxFavorable / position.EntryPrice * 100m, 3));
 
         var fill = new PaperFill(position.Id, position.ContractSymbol, isBuy ? OrderSide.Buy : OrderSide.Sell, position.Quantity,
-            Math.Round(price, 4), Math.Round(cost, 2), Math.Round(net, 2), reason, time, Mode);
+            Math.Round(price, 4), Math.Round(cost, 2), Math.Round(net, 2), reason, time, Mode, position.StrategyKey);
         return (fill, journal);
     }
 }

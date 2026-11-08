@@ -60,6 +60,24 @@ public sealed class SqlServerDatabase : IAsyncLifetime
 public class SqlServerTests(SqlServerDatabase database) : IClassFixture<SqlServerDatabase>
 {
     [SqlServerFact]
+    public async Task Decisao_antiga_sem_contexto_e_lida_como_colecoes_vazias()
+    {
+        await using var db = database.CreateContext();
+        var decision = new Domain.Paper.TradingDecision(DateTimeOffset.UtcNow, Domain.Execution.ExecutionMode.Paper, Guid.NewGuid(), "WIN", "WINZ26", "sma-cross",
+            DateTimeOffset.UtcNow, Domain.Strategies.PositionDirection.Flat);
+        db.TradingDecisions.Add(decision);
+        await db.SaveChangesAsync();
+
+        // Como ficaram as linhas gravadas antes das colunas de contexto: texto vazio.
+        await db.Database.ExecuteSqlRawAsync("UPDATE [robo].[TradingDecisions] SET [Parameters] = N'', [Features] = N''");
+        db.ChangeTracker.Clear();
+
+        var read = Assert.Single(await new PaperRepository(db).ListRecentDecisionsAsync(Domain.Execution.ExecutionMode.Paper, 10, CancellationToken.None));
+        Assert.Empty(read.Parameters);
+        Assert.Empty(read.Features);
+    }
+
+    [SqlServerFact]
     public async Task Migracoes_criam_o_banco_e_o_seed_le_limites_e_estado()
     {
         await using var db = database.CreateContext();

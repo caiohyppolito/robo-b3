@@ -3,7 +3,11 @@ const number = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 });
 const dateTime = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" });
 
 export const formatBrl = (value: number) => brl.format(value);
-export const formatNumber = (value: number) => number.format(value);
+const fixed = [0, 1, 2, 3, 4].map((d) => new Intl.NumberFormat("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d }));
+
+/** Sem casas fixas: até 2 decimais. Com <code>digits</code>: sempre aquele número de casas. */
+export const formatNumber = (value: number, digits?: number) => (digits === undefined ? number.format(value) : (fixed[Math.min(4, Math.max(0, digits))] ?? number).format(value));
+export const formatSignedBrl = (value: number) => `${value > 0 ? "+" : ""}${brl.format(value)}`;
 export const formatPercent = (value: number) => `${number.format(value)}%`;
 export const formatDateTime = (iso: string) => dateTime.format(new Date(iso));
 

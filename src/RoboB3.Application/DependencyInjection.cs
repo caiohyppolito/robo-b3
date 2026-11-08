@@ -26,6 +26,8 @@ public static class DependencyInjection
         services.AddScoped<ExecutionService>();
         services.AddScoped<MarketWatchService>();
         services.AddScoped<RiskFreeRateService>();
+        services.AddScoped<ChartService>();
+        services.AddScoped<TradeHistoryService>();
         services.AddSingleton<SimulatedOrderExecutor>();
         services.AddScoped<StrategyComparisonService>();
         services.AddSingleton<TelegramConfirmations>();

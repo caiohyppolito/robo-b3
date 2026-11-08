@@ -1,17 +1,20 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, executionApi, session, setUnauthorizedHandler, type ExecutionStatus, type Status } from "./api";
+import { api, executionApi, session, sessionUser, setUnauthorizedHandler, type ExecutionStatus, type Status } from "./api";
 import { AssetsTable } from "./components/AssetsTable";
 import { AuditList } from "./components/AuditList";
 import { BacktestPage } from "./components/backtest/BacktestPage";
+import { ChartPage } from "./components/chart/ChartPage";
 import { EmergencyCard } from "./components/EmergencyCard";
+import { HistoryPage } from "./components/history/HistoryPage";
 import { LearningPage } from "./components/learning/LearningPage";
 import { Login } from "./components/Login";
 import { OperationPage } from "./components/operation/OperationPage";
 import { DecisionsPage } from "./components/overview/DecisionsPage";
 import { OverviewPage } from "./components/overview/OverviewPage";
 import { RiskLimitsForm } from "./components/RiskLimitsForm";
+import { SettingsPage } from "./components/settings/SettingsPage";
 import { StatusPanel } from "./components/StatusPanel";
-import { pageFromHash, PAGE_TITLE, type PageId } from "./components/shell/navigation";
+import { pageFromHash, pageInfo, type PageId } from "./components/shell/navigation";
 import { Sidebar } from "./components/shell/Sidebar";
 import { applyTheme, loadTheme, type ThemeChoice } from "./components/shell/theme";
 import { TopBar } from "./components/shell/TopBar";
@@ -59,6 +62,7 @@ export function App() {
     window.location.hash = `/${next}`;
     setPage(next);
     setMenuOpen(false);
+    window.scrollTo({ top: 0 });
   };
 
   const logout = () => {
@@ -68,35 +72,39 @@ export function App() {
 
   if (!loggedIn) return <Login onLoggedIn={() => setLoggedIn(true)} />;
 
+  const info = pageInfo(page);
+
   return (
     <div className="shell">
-      <Sidebar page={page} open={menuOpen} onNavigate={navigate} onLogout={logout} />
+      <Sidebar page={page} open={menuOpen} mode={execution?.mode} user={sessionUser()} onNavigate={navigate} onLogout={logout} />
       {menuOpen && <div className="scrim" onClick={() => setMenuOpen(false)} aria-hidden="true" />}
       <div className="content">
         <TopBar
-          title={PAGE_TITLE[page]}
           status={status}
           execution={execution}
           theme={theme}
           onTheme={setTheme}
           onMenu={() => setMenuOpen((open) => !open)}
           onRisk={() => navigate("risco")}
+          onExecution={() => navigate("operacao")}
         />
         <main>
-          {error && <p className="error banner">{error}</p>}
+          <header className="page-title">
+            <span className="eyebrow">{info.group}</span>
+            <h1>{info.label}</h1>
+            <p className="muted" style={{ margin: "0.2rem 0 0", maxWidth: 760 }}>{info.description}</p>
+          </header>
+          {error && <p className="banner error">{error}</p>}
           {page === "situacao" && <OverviewPage status={status} execution={execution} onNavigate={navigate} />}
+          {page === "grafico" && <ChartPage />}
           {page === "operacao" && <OperationPage />}
           {page === "decisoes" && <DecisionsPage />}
           {page === "backtest" && <BacktestPage />}
           {page === "ia" && <LearningPage />}
+          {page === "historico" && <HistoryPage />}
           {page === "risco" &&
             (status ? (
               <>
-                <div className="page-head">
-                  <div>
-                              <p>Kill switch, perda do dia e drawdown do modo de execução atual, e os limites que o robô respeita em toda entrada.</p>
-                  </div>
-                </div>
                 <StatusPanel status={status} onChange={refresh} />
                 <RiskLimitsForm limits={status.limits} onSaved={refresh} />
                 <EmergencyCard onDone={refresh} />
@@ -105,15 +113,11 @@ export function App() {
               <p className="muted">Carregando…</p>
             ))}
           {page === "auditoria" && (
-            <>
-              <div className="page-head">
-                <div>
-                          <p>Logins, kill switch, limites, modo de execução, ordens e decisões da IA.</p>
-                </div>
-              </div>
+            <section className="card">
               <AuditList refreshKey={refreshKey} count={100} />
-            </>
+            </section>
           )}
+          {page === "config" && <SettingsPage status={status} execution={execution} onChanged={refresh} onNavigate={navigate} />}
           {page === "ativos" && <AssetsTable />}
         </main>
       </div>

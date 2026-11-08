@@ -11,11 +11,18 @@ internal static class JsonColumn
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
+    // Linhas gravadas antes destas colunas existirem vieram com texto vazio: valem como coleção vazia.
+    private static Dictionary<string, decimal> ReadDictionary(string v) =>
+        string.IsNullOrWhiteSpace(v) ? [] : JsonSerializer.Deserialize<Dictionary<string, decimal>>(v, Json) ?? [];
+
+    private static List<float> ReadList(string v) =>
+        string.IsNullOrWhiteSpace(v) ? [] : JsonSerializer.Deserialize<List<float>>(v, Json) ?? [];
+
     public static PropertyBuilder<IReadOnlyDictionary<string, decimal>> AsJson(this PropertyBuilder<IReadOnlyDictionary<string, decimal>> property) =>
         property.HasConversion(
             new ValueConverter<IReadOnlyDictionary<string, decimal>, string>(
                 v => JsonSerializer.Serialize(v, Json),
-                v => JsonSerializer.Deserialize<Dictionary<string, decimal>>(v, Json)!),
+                v => ReadDictionary(v)),
             new ValueComparer<IReadOnlyDictionary<string, decimal>>(
                 (a, b) => JsonSerializer.Serialize(a, Json) == JsonSerializer.Serialize(b, Json),
                 v => JsonSerializer.Serialize(v, Json).GetHashCode(StringComparison.Ordinal),
@@ -25,7 +32,7 @@ internal static class JsonColumn
         property.HasConversion(
             new ValueConverter<IReadOnlyList<float>, string>(
                 v => JsonSerializer.Serialize(v, Json),
-                v => JsonSerializer.Deserialize<List<float>>(v, Json)!),
+                v => ReadList(v)),
             new ValueComparer<IReadOnlyList<float>>(
                 (a, b) => a!.SequenceEqual(b!),
                 v => v.Aggregate(0, (h, f) => HashCode.Combine(h, f)),
@@ -105,6 +112,7 @@ internal sealed class PaperFillConfiguration : IEntityTypeConfiguration<PaperFil
         builder.Property(f => f.Symbol).HasMaxLength(30);
         builder.Property(f => f.Side).HasConversion<string>().HasMaxLength(10);
         builder.Property(f => f.Reason).HasMaxLength(100);
+        builder.Property(f => f.StrategyKey).HasMaxLength(50);
         builder.Property(f => f.Mode).HasConversion<string>().HasMaxLength(10).HasDefaultValue(Domain.Execution.ExecutionMode.Paper);
         builder.Property(f => f.Price).HasPrecision(18, 6);
         builder.Property(f => f.Cost).HasPrecision(18, 4);

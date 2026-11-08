@@ -46,6 +46,8 @@ export function BacktestPage() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<BacktestDetail | null>(null);
   const [comparison, setComparison] = useState<ComparisonResult | null>(null);
+  const [view, setView] = useState<"resultado" | "operacoes" | "eventos">("resultado");
+  useEffect(() => setView("resultado"), [result]);
 
   // Futuros (WIN/WDO) só têm barras intradiárias, vindas do MT5.
   const tradable = useMemo(() => assets.filter((a) => a.assetClass !== "Index"), [assets]);
@@ -124,7 +126,17 @@ export function BacktestPage() {
   return (
     <div className="stack">
       <form className="card" onSubmit={runBacktest}>
-        <h2>Backtest</h2>
+        <div className="card-head">
+          <h2>Parâmetros</h2>
+          <div className="actions">
+            <button type="button" className="small" style={{ margin: 0 }} onClick={compare} disabled={running !== null}>
+              {running === "compare" ? "Comparando…" : "Comparar estratégias"}
+            </button>
+            <button type="submit" className="primary small" style={{ margin: 0 }} disabled={running !== null}>
+              {running === "run" ? "Rodando…" : "▶ Rodar backtest"}
+            </button>
+          </div>
+        </div>
         <div className="form-grid">
           <label>
             Ativo
@@ -225,46 +237,73 @@ export function BacktestPage() {
           )}
         </details>
 
-        {error && <p className="error">{error}</p>}
-        <div className="actions">
-          <button type="submit" className="primary" disabled={running !== null}>
-            {running === "run" ? "Rodando…" : "Rodar backtest"}
-          </button>
-          <button type="button" onClick={compare} disabled={running !== null}>
-            {running === "compare" ? "Comparando… (pode levar alguns segundos)" : "Comparar todas as estratégias"}
-          </button>
-        </div>
+        {error && <p className="callout bad">{error}</p>}
+        <p className="callout" style={{ marginTop: "0.75rem" }}>
+          O sinal sai no fechamento do candle e a ordem é executada na abertura do seguinte, com o mesmo gestor de risco do robô. Sem taxa de CDI
+          informada, o caixa rende o CDI diário do Banco Central.
+        </p>
       </form>
 
       {result && (
-        <section className="card stack">
-          <h2>
-            {result.summary.symbol} · {strategyName(result.summary.strategy)} · {formatDate(result.summary.startDate)} a{" "}
-            {formatDate(result.summary.endDate)}
-            {result.summary.metaModelId && " · com filtro da IA"}
-          </h2>
-          <MetricsGrid metrics={result.summary.metrics} />
-          <EquityChart points={result.equity} />
-          {result.events.length > 0 && (
-            <details>
-              <summary>Eventos ({result.events.length})</summary>
-              <ul className="muted small">
-                {result.events.map((e, i) => (
-                  <li key={i}>
-                    {formatDate(e.date)}: {e.message}
-                  </li>
-                ))}
-              </ul>
-            </details>
+        <>
+          <nav className="tabs" aria-label="Resultado do backtest">
+            {(
+              [
+                ["resultado", "Resultado"],
+                ["operacoes", `Operações (${result.trades.length})`],
+                ["eventos", `Eventos (${result.events.length})`],
+              ] as const
+            ).map(([id, label]) => (
+              <button key={id} type="button" className={view === id ? "active" : ""} onClick={() => setView(id)}>
+                {label}
+              </button>
+            ))}
+            <span className="muted small" style={{ marginLeft: "auto", alignSelf: "center" }}>
+              {result.summary.symbol} · {strategyName(result.summary.strategy)} · {formatDate(result.summary.startDate)} a {formatDate(result.summary.endDate)}
+              {result.summary.metaModelId && " · com filtro da IA"}
+            </span>
+          </nav>
+          {view === "resultado" && (
+            <>
+              <MetricsGrid metrics={result.summary.metrics} />
+              <section className="card">
+                <div className="card-head">
+                  <h2>Curva de capital</h2>
+                  <span className="muted small">estratégia × comprar e segurar × CDI</span>
+                </div>
+                <EquityChart points={result.equity} />
+              </section>
+            </>
           )}
-          <h2>Operações</h2>
-          <TradesTable trades={result.trades} />
-        </section>
+          {view === "operacoes" && (
+            <section className="card">
+              <TradesTable trades={result.trades} />
+            </section>
+          )}
+          {view === "eventos" && (
+            <section className="card">
+              {result.events.length === 0 ? (
+                <p className="muted" style={{ margin: 0 }}>Nenhum evento: os limites de risco não foram atingidos.</p>
+              ) : (
+                <ul className="audit">
+                  {result.events.map((e, i) => (
+                    <li key={i}>
+                      <span className="mono muted">{formatDate(e.date)}</span> {e.message}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
+        </>
       )}
 
       {comparison && (
         <section className="card">
-          <h2>Comparação de estratégias (fora da amostra)</h2>
+          <div className="card-head">
+            <h2>Comparação de estratégias</h2>
+            <span className="muted small">parâmetros escolhidos dentro da amostra, avaliados fora dela</span>
+          </div>
           <ComparisonView result={comparison} strategies={strategies} />
         </section>
       )}

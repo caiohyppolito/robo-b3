@@ -19,14 +19,20 @@ com a ordem não ficar registrado, a posição só estaria protegida enquanto o 
 ## Passo a passo (pregão aberto, conta DEMO)
 
 1. Conector com `ROBOB3_ORDERS=demo` e `ROBOB3_MAX_CONTRACTS=1`; painel em "MT5 demo".
-2. Pela documentação interativa do conector (`http://127.0.0.1:8765/docs`, com o token), envie `POST /orders`:
-   `{"symbol":"WINZ26","side":"buy","volume":1,"stop_loss":<preço-300>,"take_profit":<preço+300>,"client_id":"teste-manual-0001","expected_mode":"demo","comment":"teste"}`
+2. No PowerShell, envie a ordem direto ao conector (troque o token e os preços; o conector só aceita chamadas do próprio PC):
+
+   ```powershell
+   $h = @{ "X-Gateway-Token" = "<seu token do conector>" }
+   $body = @{ symbol = "WINZ26"; side = "buy"; volume = 1; stop_loss = <preço-300>; take_profit = <preço+300>; client_id = "teste-manual-0001"; expected_mode = "demo"; comment = "teste" } | ConvertTo-Json
+   Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8765/orders -Headers $h -ContentType "application/json" -Body $body
+   ```
+
 3. Verifique:
    - [ ] `filled: true`. Se vier recusada, anote o `retcode` e a mensagem (ex.: 10030 = modo de preenchimento não suportado).
    - [ ] `stop_confirmed: true`.
    - [ ] No MT5 (aba Negociação), a posição mostra S/L e T/P.
    - [ ] Feche o conector e o robô: o S/L continua no MT5.
-4. Mova o stop pelo robô (ou `POST /positions/<ticket>/stop`) e confira que o T/P **não** sumiu.
+4. Mova o stop pelo robô (ou `Invoke-RestMethod -Method Post -Headers $h -Uri "http://127.0.0.1:8765/positions/<ticket>/stop?symbol=WINZ26&stop_loss=<novo>"`) e confira que o T/P **não** sumiu.
 5. Zere a posição pelo painel ("Encerrar") e confira que não sobrou nada no MT5.
 
 Se o item 3 falhar, não ligue as alocações no modo MT5 demo: anote o resultado e ajustamos o envio (por exemplo, ordem sem stop seguida de `TRADE_ACTION_SLTP`, como na referência).

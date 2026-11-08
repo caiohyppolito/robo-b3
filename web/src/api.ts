@@ -84,6 +84,19 @@ export const session = {
   },
 };
 
+/** Nome do usuário lido do token (só para exibir; a API é quem valida o token). */
+export function sessionUser(): string {
+  const token = session.token;
+  if (!token) return "";
+  try {
+    const payload = JSON.parse(atob((token.split(".")[1] ?? "").replace(/-/g, "+").replace(/_/g, "/"))) as Record<string, unknown>;
+    const name = payload["unique_name"] ?? payload["name"] ?? payload["sub"] ?? payload["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name"];
+    return typeof name === "string" ? name : "usuário";
+  } catch {
+    return "usuário";
+  }
+}
+
 let onUnauthorized: () => void = () => {};
 export function setUnauthorizedHandler(handler: () => void) {
   onUnauthorized = handler;
@@ -573,4 +586,77 @@ export const ordersApi = {
   list: () => request<OrderIntent[]>("/api/orders?count=50"),
   flattenAll: (confirmation: string) =>
     request<CycleReport>("/api/emergency/flatten", { method: "POST", body: JSON.stringify({ confirmation }) }),
+};
+
+export interface ChartCandle { time: number; open: number; high: number; low: number; close: number; volume: number }
+export interface ChartPoint { time: number; value: number }
+export interface ChartMarker { time: number; side: "buy" | "sell"; price: number; reason: string; result: number | null }
+export interface ChartReading {
+  last: number;
+  changePercent: number;
+  adx14: number | null;
+  atr14: number | null;
+  atrPercentile: number | null;
+  rsi14: number | null;
+  volumeRatio: number | null;
+  sma20: number | null;
+  sma50: number | null;
+  vwap: number | null;
+  trend: "alta" | "baixa" | "lateral" | "indefinida";
+  trendDetail: string;
+}
+export interface ChartData {
+  symbol: string;
+  contract: string;
+  timeframe: Timeframe;
+  source: string;
+  candles: ChartCandle[];
+  sma20: ChartPoint[];
+  sma50: ChartPoint[];
+  vwap: ChartPoint[];
+  markers: ChartMarker[];
+  reading: ChartReading | null;
+}
+
+export interface CdiInfo { date: string | null; dailyPercent: number | null; annualizedPercent: number | null; source: string }
+
+export const marketApi = {
+  chart: (symbol: string, timeframe: Timeframe, count = 300) =>
+    request<ChartData>(`/api/market/chart/${encodeURIComponent(symbol)}?timeframe=${timeframe}&count=${count}`),
+  cdi: () => request<CdiInfo>("/api/cdi"),
+  syncCdi: () => request<{ saved: number }>("/api/cdi/sync", { method: "POST" }),
+};
+
+export interface ClosedTrade {
+  positionId: string;
+  mode: ExecutionMode;
+  symbol: string;
+  strategy: string | null;
+  direction: "Compra" | "Venda";
+  quantity: number;
+  entryTime: string | null;
+  entryPrice: number | null;
+  exitTime: string;
+  exitPrice: number;
+  exitReason: string;
+  costs: number;
+  netProfit: number;
+}
+
+export interface TradeHistory {
+  trades: ClosedTrade[];
+  wins: number;
+  netProfit: number;
+  averageProfit: number;
+  winRatePercent: number;
+  profitFactor: number | null;
+}
+
+export const historyApi = {
+  trades: (mode?: ExecutionMode, symbol?: string) => {
+    const query = new URLSearchParams({ count: "500" });
+    if (mode) query.set("mode", mode);
+    if (symbol) query.set("symbol", symbol);
+    return request<TradeHistory>(`/api/history/trades?${query.toString()}`);
+  },
 };

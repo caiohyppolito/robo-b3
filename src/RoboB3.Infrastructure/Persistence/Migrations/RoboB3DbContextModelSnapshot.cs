@@ -726,6 +726,10 @@ namespace RoboB3.Infrastructure.Persistence.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("nvarchar(10)");
 
+                    b.Property<string>("StrategyKey")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
                     b.Property<string>("Symbol")
                         .IsRequired()
                         .HasMaxLength(30)
