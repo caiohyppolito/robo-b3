@@ -8,6 +8,9 @@ export type PageId =
   | "risco"
   | "backtest"
   | "ia"
+  | "varredura"
+  | "carteira"
+  | "ir"
   | "historico"
   | "auditoria"
   | "config"
@@ -39,6 +42,8 @@ export const NAV: { group: string; items: NavItem[] }[] = [
     group: "Validar",
     items: [
       { id: "backtest", label: "Backtest", icon: "backtest", description: "Simula o histórico com custos, IR, CDI no caixa e execução na abertura seguinte." },
+      { id: "varredura", label: "Varredura", icon: "scan", description: "Procura ativos líquidos em que alguma estratégia venceu o CDI e o comprar e segurar fora da amostra." },
+      { id: "carteira", label: "Carteira", icon: "pie", description: "Backtest de uma carteira de vários ativos com teto por ativo, rebalanceamento e custos." },
       { id: "ia", label: "IA", icon: "ai", description: "Modelos que vetam entradas ruins: evidência fora da amostra, calibração e mudança de regime." },
     ],
   },
@@ -46,6 +51,7 @@ export const NAV: { group: string; items: NavItem[] }[] = [
     group: "Registros",
     items: [
       { id: "historico", label: "Histórico", icon: "history", description: "Todas as operações encerradas em todos os modos, com horários, motivo de saída, custos e resultado." },
+      { id: "ir", label: "Imposto de renda", icon: "tax", description: "Apuração mensal das operações do robô: swing e day trade, isenção, prejuízo a compensar, IRRF e DARF." },
       { id: "auditoria", label: "Auditoria", icon: "audit", description: "Logins, travas, limites, modo de execução, ordens e decisões da IA." },
     ],
   },

@@ -28,6 +28,8 @@ public sealed partial class DatabaseInitializer(
         new("WDO", "Mini Dólar (contrato vigente)", AssetClass.Future, null, 1),
     ];
 
+    public static IReadOnlyList<Asset> UniverseAssets => AssetUniverse.Liquid;
+
     public async Task InitializeAsync(bool applyMigrations, CancellationToken cancellationToken)
     {
         if (applyMigrations && db.Database.IsRelational())
@@ -43,6 +45,13 @@ public sealed partial class DatabaseInitializer(
         var now = clock.GetUtcNow();
         var existingSymbols = await db.Assets.Select(a => a.Symbol).ToListAsync(cancellationToken);
         var missing = DefaultAssets.Where(a => !existingSymbols.Contains(a.Symbol)).ToList();
+        foreach (var asset in AssetUniverse.Liquid.Where(a => !existingSymbols.Contains(a.Symbol)))
+        {
+            var universe = new Asset(asset.Symbol, asset.Name, asset.AssetClass, asset.DailyDataSymbol, asset.LotSize);
+            universe.Deactivate();
+            db.Assets.Add(universe);
+        }
+
         foreach (var asset in missing)
         {
             db.Assets.Add(new Asset(asset.Symbol, asset.Name, asset.AssetClass, asset.DailyDataSymbol, asset.LotSize));

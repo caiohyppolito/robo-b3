@@ -89,6 +89,17 @@ internal static class BacktestEndpoints
 
         var group = app.MapGroup("/api/backtests").WithTags("Backtest");
 
+        group.MapPost("/scan", (ScanRequest request, ScannerService scanner, CancellationToken ct) => scanner.ScanAsync(request, ct));
+
+        group.MapPost("/scan/universe", async (UniverseRequest request, ScannerService scanner, IUnitOfWork unitOfWork, CancellationToken ct) =>
+            new { Changed = await scanner.SetUniverseAsync(request.Active, unitOfWork, ct), Universe = Domain.MarketData.AssetUniverse.Liquid.Count });
+
+        group.MapPost("/ingest", async (Application.MarketData.MarketDataIngestionService ingestion, CancellationToken ct) =>
+        {
+            var result = await ingestion.IngestDailyAsync(ct);
+            return new { result.AssetsProcessed, result.CandlesSaved, result.Failures };
+        });
+
         group.MapGet("/experiments", async (IExperimentRepository experiments, CancellationToken ct, int count = 30) =>
             (await experiments.ListRecentAsync(count, ct)).Select(e => new { e.Id, e.Kind, e.Description, e.Trials, e.CodeVersion, e.CreatedAt }));
 
@@ -129,3 +140,5 @@ internal static class BacktestEndpoints
         return app;
     }
 }
+
+public sealed record UniverseRequest(bool Active);

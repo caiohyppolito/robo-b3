@@ -29,7 +29,8 @@ public class PersistenceTests
         }
 
         await using var check = NewContext(name);
-        Assert.Equal(DatabaseInitializer.DefaultAssets.Count, await check.Assets.CountAsync());
+        Assert.Equal(DatabaseInitializer.DefaultAssets.Count + DatabaseInitializer.UniverseAssets.Count, await check.Assets.CountAsync());
+        Assert.Equal(DatabaseInitializer.DefaultAssets.Count, await check.Assets.CountAsync(a => a.IsActive));
         Assert.Equal(1, await check.RiskSettings.CountAsync());
         Assert.True((await check.TradingStates.SingleAsync()).IsHalted);
     }

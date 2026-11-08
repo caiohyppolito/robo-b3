@@ -694,3 +694,30 @@ export const historyApi = {
     return request<TradeHistory>(`/api/history/trades?${query.toString()}`);
   },
 };
+
+export interface ScanItem {
+  symbol: string;
+  name: string;
+  averageDailyVolumeMillions: number;
+  liquid: boolean;
+  strategy: string | null;
+  parameters: Record<string, number> | null;
+  inSampleSharpe: number | null;
+  outOfSampleSharpe: number | null;
+  outOfSampleReturnPercent: number | null;
+  outOfSampleMaxDrawdownPercent: number | null;
+  outOfSampleTrades: number | null;
+  buyAndHoldReturnPercent: number | null;
+  riskFreeReturnPercent: number | null;
+  verdict: "candidato" | "observar" | "descartar" | "ilíquido" | "sem dados";
+  reason: string;
+}
+export interface ScanResult { outOfSampleFrom: string | null; outOfSampleTo: string | null; trialsEvaluated: number; items: ScanItem[]; skipped: string[] }
+
+export const scanApi = {
+  scan: (minDailyVolumeMillions: number, inSamplePercent: number, from?: string) =>
+    request<ScanResult>("/api/backtests/scan", { method: "POST", body: JSON.stringify({ minDailyVolumeMillions, inSamplePercent, from: from || null }) }),
+  universe: (active: boolean) =>
+    request<{ changed: number; universe: number }>("/api/backtests/scan/universe", { method: "POST", body: JSON.stringify({ active }) }),
+  ingest: () => request<{ assetsProcessed: number; candlesSaved: number; failures: string[] }>("/api/backtests/ingest", { method: "POST" }),
+};

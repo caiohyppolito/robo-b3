@@ -4,6 +4,7 @@ import { AssetsTable } from "./components/AssetsTable";
 import { AuditList } from "./components/AuditList";
 import { BacktestPage } from "./components/backtest/BacktestPage";
 import { ChartPage } from "./components/chart/ChartPage";
+import { ScannerPage } from "./components/scanner/ScannerPage";
 import { EmergencyCard } from "./components/EmergencyCard";
 import { HistoryPage } from "./components/history/HistoryPage";
 import { LearningPage } from "./components/learning/LearningPage";
@@ -101,6 +102,7 @@ export function App() {
           {page === "decisoes" && <DecisionsPage />}
           {page === "backtest" && <BacktestPage />}
           {page === "ia" && <LearningPage />}
+          {page === "varredura" && <ScannerPage />}
           {page === "historico" && <HistoryPage />}
           {page === "risco" &&
             (status ? (
