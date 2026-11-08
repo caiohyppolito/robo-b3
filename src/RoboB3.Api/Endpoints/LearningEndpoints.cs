@@ -81,6 +81,12 @@ internal static class LearningEndpoints
         group.MapPost("/models/{id:guid}/reactivate", async (Guid id, LearningService learning, HttpContext http, CancellationToken ct) =>
             MetaModelDto.From(await learning.ReactivateAsync(id, http.Actor(), ct)));
 
+        group.MapGet("/vetoes", async (VetoReviewService vetoes, CancellationToken ct, int count = 100) =>
+        {
+            var review = await vetoes.ReviewAsync(count, ct);
+            return new { review.Vetoes, review.Evaluated, review.WouldHaveWon, review.WouldHaveLost, review.AvoidedLossPercent, review.MissedGainPercent, review.HitRatePercent, review.Items };
+        });
+
         group.MapGet("/analyst", (IModelAnalyst analyst) => new { analyst.IsConfigured });
 
         group.MapGet("/journal", async (ITradeJournalRepository journal, CancellationToken ct, int count = 100) =>

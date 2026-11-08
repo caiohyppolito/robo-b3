@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { backtestApi, learningApi, type JournalEntry, type MetaModel, type StrategyDef } from "../../api";
 import { formatDate, formatDateTime, formatNumber, formatPercent, formatSignedPercent, formatBrl } from "../../format";
 import { ImportanceChart } from "./ImportanceChart";
+import { ModelHealth, VetoCard } from "./ModelHealth";
 
 const STATUS: Record<MetaModel["status"], { icon: string; label: string; className: string }> = {
   Active: { icon: "●", label: "Ativo", className: "status-active" },
@@ -132,6 +133,8 @@ export function LearningPage() {
             />
           </div>
 
+          <ModelHealth model={selected} busy={busy === "reactivate"} onReactivate={() => void run("reactivate", () => learningApi.reactivate(selected.id))} />
+
           {Object.keys(selected.featureImportance).length > 0 && (
             <div>
               <h2>O que o modelo mais usa para decidir</h2>
@@ -156,6 +159,8 @@ export function LearningPage() {
           </div>
         </section>
       )}
+
+      <VetoCard />
 
       <section className="card">
         <h2>Histórico de modelos</h2>

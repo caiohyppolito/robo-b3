@@ -548,8 +548,10 @@ public sealed partial class PaperTradingService(
             return;
         }
 
+        // O diário só leva as variáveis de entradas em barras diárias: é com elas que a IA é treinada.
+        var journalFeatures = assignment.Timeframe == Timeframe.D1 ? features : null;
         var (position, fill) = cycle.Account.OpenPosition(assignment.Id, instrument, contract, assignment.StrategyKey, target, result.Quantity,
-            result.Price, stop, backtestOptions.Value.Costs(), features, probability, cycle.Now, result.BrokerTicket, takeProfit);
+            result.Price, stop, backtestOptions.Value.Costs(), journalFeatures, probability, cycle.Now, result.BrokerTicket, takeProfit);
         paper.AddPosition(position);
         paper.AddFill(fill);
         intent.LinkPosition(position.Id);

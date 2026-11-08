@@ -53,6 +53,9 @@ public interface IPaperRepository
     Task<IReadOnlyList<TradingDecision>> ListRecentDecisionsAsync(ExecutionMode mode, int count, CancellationToken cancellationToken);
 
     /// <summary>Variáveis registradas nas decisões recentes da estratégia, só de alocações em barras diárias (todos os modos).</summary>
+    /// <summary>Entradas vetadas pela IA em alocações de barras diárias (todos os modos), mais recentes primeiro.</summary>
+    Task<IReadOnlyList<TradingDecision>> ListRecentVetoesAsync(int count, CancellationToken cancellationToken);
+
     Task<IReadOnlyList<IReadOnlyList<float>>> ListRecentDailyFeaturesAsync(string strategyKey, int count, CancellationToken cancellationToken);
 
     /// <summary>Apaga conta, posições e execuções do modo (o diário da IA e o registro de decisões são mantidos).</summary>

@@ -354,6 +354,37 @@ export interface MetaModel {
   activatedAt: string | null;
   retiredAt: string | null;
   analysis: string | null;
+  calibration: Calibration | null;
+}
+
+export interface CalibrationBin { from: number; to: number; count: number; meanPredicted: number; observedWinRate: number }
+export interface Calibration { examples: number; brier: number; baseRateBrier: number; expectedCalibrationError: number; bins: CalibrationBin[]; beatsBaseRate: boolean }
+
+export type DriftLevel = "InsufficientData" | "Stable" | "Moderate" | "Strong";
+export interface DriftReport { recentSamples: number; level: DriftLevel; maxPsi: number; features: { name: string; psi: number; level: DriftLevel }[] }
+
+export interface VetoOutcome {
+  decisionId: number;
+  time: string;
+  symbol: string;
+  strategy: string;
+  direction: string;
+  probability: number | null;
+  status: string;
+  entryDate: string | null;
+  exitDate: string | null;
+  returnPercent: number | null;
+  exitReason: string | null;
+}
+export interface VetoReview {
+  vetoes: number;
+  evaluated: number;
+  wouldHaveWon: number;
+  wouldHaveLost: number;
+  avoidedLossPercent: number;
+  missedGainPercent: number;
+  hitRatePercent: number | null;
+  items: VetoOutcome[];
 }
 
 export interface JournalEntry {
@@ -377,6 +408,9 @@ export const learningApi = {
     request<MetaModel>(`/api/learning/models/${encodeURIComponent(id)}/analysis`, { method: "POST" }),
   analyst: () => request<{ isConfigured: boolean }>("/api/learning/analyst"),
   journal: () => request<JournalEntry[]>("/api/learning/journal?count=50"),
+  drift: (id: string) => request<DriftReport>(`/api/learning/models/${encodeURIComponent(id)}/drift`),
+  reactivate: (id: string) => request<MetaModel>(`/api/learning/models/${encodeURIComponent(id)}/reactivate`, { method: "POST" }),
+  vetoes: () => request<VetoReview>("/api/learning/vetoes?count=100"),
 };
 
 // ---------- Operação simulada (Fase 4) ----------
