@@ -721,3 +721,22 @@ export const scanApi = {
     request<{ changed: number; universe: number }>("/api/backtests/scan/universe", { method: "POST", body: JSON.stringify({ active }) }),
   ingest: () => request<{ assetsProcessed: number; candlesSaved: number; failures: string[] }>("/api/backtests/ingest", { method: "POST" }),
 };
+
+export type PortfolioWeighting = "Equal" | "InverseVolatility";
+export interface PortfolioRebalance { date: string; targetWeights: Record<string, number>; cashWeight: number; turnover: number; costs: number }
+export interface PortfolioResponse {
+  from: string;
+  to: string;
+  skipped: string[];
+  result: {
+    equity: EquityPoint[];
+    metrics: Metrics;
+    rebalances: PortfolioRebalance[];
+    finalWeights: Record<string, number>;
+    averageInvestedPercent: number;
+  };
+}
+export const portfolioApi = {
+  run: (body: { symbols: string[]; from?: string; to?: string; weighting: PortfolioWeighting; maxWeightPercent: number; trendFilter: boolean; initialCapital: number }) =>
+    request<PortfolioResponse>("/api/backtests/portfolio", { method: "POST", body: JSON.stringify(body) }),
+};

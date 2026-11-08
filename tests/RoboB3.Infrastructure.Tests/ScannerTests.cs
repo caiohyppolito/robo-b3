@@ -62,3 +62,24 @@ public class ScannerTests
         Assert.Equal(AssetUniverse.Liquid.Count, await scanner.SetUniverseAsync(false, db, CancellationToken.None));
     }
 }
+
+public class PortfolioServiceTests
+{
+    [Fact]
+    public async Task Carteira_roda_com_os_ativos_gravados_e_ignora_os_sem_dados_e_futuros()
+    {
+        await using var db = new RoboB3DbContext(new DbContextOptionsBuilder<RoboB3DbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        await BacktestIntegrationTests.SeedAsync(db);
+        var service = new PortfolioService(BacktestIntegrationTests.Service(db));
+
+        var response = await service.RunAsync(
+            new PortfolioRequest(["PETR4", "VALE3", "ITUB4", "WIN"], new DateOnly(2025, 1, 2), new DateOnly(2026, 11, 6), Domain.Backtesting.PortfolioWeighting.InverseVolatility, 40m),
+            CancellationToken.None);
+
+        Assert.Equal(["PETR4", "VALE3"], response.Result.FinalWeights.Keys.Order().ToArray());
+        Assert.Equal(2, response.Skipped.Count);
+        Assert.All(response.Result.Rebalances, r => Assert.All(r.TargetWeights.Values, w => Assert.True(w <= 0.4m)));
+        Assert.True(response.Result.Metrics.CostsPaid > 0);
+        Assert.True(response.Result.Equity.Count > 400);
+    }
+}

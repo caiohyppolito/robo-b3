@@ -89,6 +89,8 @@ internal static class BacktestEndpoints
 
         var group = app.MapGroup("/api/backtests").WithTags("Backtest");
 
+        group.MapPost("/portfolio", (PortfolioRequest request, PortfolioService portfolio, CancellationToken ct) => portfolio.RunAsync(request, ct));
+
         group.MapPost("/scan", (ScanRequest request, ScannerService scanner, CancellationToken ct) => scanner.ScanAsync(request, ct));
 
         group.MapPost("/scan/universe", async (UniverseRequest request, ScannerService scanner, IUnitOfWork unitOfWork, CancellationToken ct) =>

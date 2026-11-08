@@ -30,6 +30,7 @@ public static class DependencyInjection
         services.AddScoped<TradeHistoryService>();
         services.AddScoped<VetoReviewService>();
         services.AddScoped<ScannerService>();
+        services.AddScoped<PortfolioService>();
         services.AddSingleton<SimulatedOrderExecutor>();
         services.AddScoped<StrategyComparisonService>();
         services.AddSingleton<TelegramConfirmations>();
