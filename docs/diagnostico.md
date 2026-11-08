@@ -62,6 +62,19 @@ O que **não** foi verificado, porque depende do seu PC ou de rede bloqueada aqu
 - Resposta real da API do Banco Central. O formato foi implementado pela documentação do SGS, com leitura tolerante e testes com exemplo fixo. Confira em Configurações → Dados e CDI → "Atualizar agora".
 - Resultados das estratégias nos seus dados. O Yahoo é bloqueado neste ambiente. Na comparação feita na outra sessão, nenhuma estratégia simples venceu o CDI fora da amostra.
 
+## 3.1 Como avaliar o WIN intradiário
+
+A comparação aceita barras de 5, 15 e 60 minutos com day trade, e várias janelas fora da amostra (walk-forward).
+
+- **Onde:** Backtest → tempo gráfico M5 → marcar day trade → "Comparar estratégias". Sem ativo escolhido, a comparação usa WIN e WDO.
+- **Janelas:** cada janela fora da amostra é avaliada com parâmetros escolhidos usando tudo o que veio antes dela. Os cortes caem sempre no início de um pregão.
+- **O que olhar:**
+  - em quantas janelas a estratégia venceu o CDI (na maioria, não só no total);
+  - o resultado por operação com a margem de 95% (a margem não pode engolir a média);
+  - o número de operações.
+- **Quanto histórico:** as barras de 5 minutos vêm do MT5 pelo worker intradiário. Com poucas semanas, o resultado é anedótico. Espere pelo menos 3 meses de barras antes de concluir qualquer coisa.
+- **Varredura:** também aceita janelas. Para ser candidato, o ativo precisa vencer o CDI na maioria das janelas, e a margem de 95% não pode incluir o zero.
+
 ## 4. Critérios para algum dia ligar a conta real
 
 A conta real só deve ser considerada com **todos** os itens abaixo cumpridos. O robô não verifica esta lista por conta própria: a decisão é sua, e a troca exige as três travas e a frase de confirmação.

@@ -11,7 +11,9 @@ namespace RoboB3.Application.Backtesting;
 /// <summary>
 /// Compara as estratégias de forma honesta: escolhe os parâmetros só com a parte inicial do histórico
 /// (dentro da amostra) e mede o resultado na parte final, que a otimização nunca viu (fora da amostra).
-/// Assim evitamos premiar o ajuste excessivo ao passado.
+/// Com várias janelas (walk-forward), a parte final é dividida em períodos sucessivos e cada um é avaliado
+/// com parâmetros escolhidos usando tudo o que veio antes dele: são várias avaliações independentes em vez
+/// de uma só, que poderia ter caído num período atípico. Funciona em barras diárias e intradiárias (day trade).
 /// </summary>
 public sealed class StrategyComparisonService(
     IAssetRepository assets,
@@ -31,25 +33,44 @@ public sealed class StrategyComparisonService(
             throw new DomainException("A parte dentro da amostra deve ficar entre 30% e 90%.");
         }
 
+        if (request.Folds is < 1 or > 12)
+        {
+            throw new DomainException("Use de 1 a 12 janelas fora da amostra.");
+        }
+
+        var intraday = request.Timeframe != Timeframe.D1;
+        if (request.FlattenAtDayEnd && !intraday)
+        {
+            throw new DomainException("Day trade precisa de barras intradiárias (M1, M5, M15 ou H1).");
+        }
+
         var (from, to) = backtests.ResolvePeriod(request.From, request.To);
-        var settings = await backtests.BuildSettingsAsync(request.Settings, cancellationToken, period: (from, to));
+        var settings = await backtests.BuildSettingsAsync(request.Settings, cancellationToken, request.FlattenAtDayEnd, (from, to));
         var symbols = request.Symbols is { Count: > 0 }
             ? request.Symbols
-            : (await assets.ListAsync(onlyActive: true, cancellationToken))
-                .Where(a => a.DailyDataSymbol is not null && a.AssetClass is AssetClass.Stock or AssetClass.Etf)
-                .Select(a => a.Symbol)
-                .ToList();
+            : intraday
+                ? ["WIN", "WDO"]
+                : (await assets.ListAsync(onlyActive: true, cancellationToken))
+                    .Where(a => a.DailyDataSymbol is not null && a.AssetClass is AssetClass.Stock or AssetClass.Etf)
+                    .Select(a => a.Symbol)
+                    .ToList();
 
-        var series = new List<(InstrumentSpec Instrument, IReadOnlyList<Bar> Bars, int Start, int Split)>();
+        var series = new List<(InstrumentSpec Instrument, IReadOnlyList<Bar> Bars, int Start, int Split, int[] Folds)>();
         var skipped = new List<string>();
         foreach (var symbol in symbols)
         {
             try
             {
-                var (asset, bars) = await backtests.LoadBarsAsync(symbol, from, to, cancellationToken);
+                var (asset, bars) = await backtests.LoadBarsAsync(symbol, from, to, cancellationToken, request.Timeframe);
                 var start = BacktestService.FirstIndexOnOrAfter(bars, from);
-                var split = start + (int)((bars.Count - start) * request.InSamplePercent / 100m);
-                series.Add((InstrumentSpec.For(asset), bars, start, split));
+                var split = DayStart(bars, start + (int)((bars.Count - start) * request.InSamplePercent / 100m));
+                var folds = FoldStarts(bars, split, request.Folds);
+                if (split >= bars.Count - 1)
+                {
+                    throw new DomainException("histórico curto demais para separar dentro e fora da amostra.");
+                }
+
+                series.Add((InstrumentSpec.For(asset), bars, start, split, folds));
             }
             catch (DomainException ex)
             {
@@ -71,7 +92,7 @@ public sealed class StrategyComparisonService(
         {
             try
             {
-                rows.Add(Evaluate(item.Series.Instrument, item.Series.Bars, item.Series.Start, item.Series.Split, item.Definition, settings));
+                rows.Add(Evaluate(item.Series.Instrument, item.Series.Bars, item.Series.Start, item.Series.Folds, item.Definition, settings));
             }
             catch (DomainException ex)
             {
@@ -85,10 +106,10 @@ public sealed class StrategyComparisonService(
         var ranking = Rank(ordered);
 
         // Cada combinação da grade em cada ativo, mais a avaliação fora da amostra: tudo conta como tentativa.
-        var trials = series.Count * StrategyCatalog.All.Sum(d => d.Grid().Count() + 1);
+        var trials = series.Count * StrategyCatalog.All.Sum(d => d.Grid().Count() + 1) * request.Folds;
         var experiment = new ResearchExperiment(
             "comparacao-estrategias",
-            $"{series.Count} ativos, {reference.Bars[reference.Start].Date:dd/MM/yyyy} a {reference.Bars[^1].Date:dd/MM/yyyy}, {request.InSamplePercent}% dentro da amostra",
+            $"{series.Count} ativos, {request.Timeframe}{(request.FlattenAtDayEnd ? " day trade" : "")}, {reference.Bars[reference.Start].Date:dd/MM/yyyy} a {reference.Bars[^1].Date:dd/MM/yyyy}, {request.InSamplePercent}% dentro da amostra, {request.Folds} janela(s)",
             trials,
             System.Text.Json.JsonSerializer.Serialize(ranking),
             CodeVersion.Current,
@@ -107,57 +128,125 @@ public sealed class StrategyComparisonService(
             experiment.Id);
     }
 
+    /// <summary>Índice da primeira barra do pregão que contém (ou segue) o índice dado: os cortes nunca partem um pregão.</summary>
+    internal static int DayStart(IReadOnlyList<Bar> bars, int index)
+    {
+        index = Math.Clamp(index, 0, bars.Count - 1);
+        while (index > 0 && index < bars.Count && bars[index].Date == bars[index - 1].Date)
+        {
+            index++;
+        }
+
+        return Math.Min(index, bars.Count - 1);
+    }
+
+    /// <summary>Início de cada janela fora da amostra (a última termina no fim da série).</summary>
+    internal static int[] FoldStarts(IReadOnlyList<Bar> bars, int split, int folds)
+    {
+        var length = bars.Count - split;
+        return Enumerable.Range(0, folds)
+            .Select(f => f == 0 ? split : DayStart(bars, split + (length * f / folds)))
+            .Distinct()
+            .Where(i => i < bars.Count - 1)
+            .ToArray();
+    }
+
     private static ComparisonRow Evaluate(
         InstrumentSpec instrument,
         IReadOnlyList<Bar> bars,
         int start,
-        int split,
+        int[] foldStarts,
         StrategyDefinition definition,
         BacktestSettings settings)
     {
-        var inSampleBars = bars.Take(split + 1).ToList();
         var minTrades = definition.Key == StrategyKeys.BuyAndHold ? 1 : MinInSampleTrades;
+        var folds = new List<FoldResult>();
+        var oosTrades = new List<BacktestTrade>();
+        BacktestResult? lastInSample = null;
+        StrategyParameters? lastChosen = null;
+        decimal worstDrawdown = 0;
 
-        BacktestResult? bestInSample = null;
-        foreach (var parameters in definition.Grid())
+        for (var f = 0; f < foldStarts.Length; f++)
         {
-            var result = BacktestEngine.Run(inSampleBars, definition.Create(parameters), parameters, instrument, settings, start);
-            if (result.Metrics.Trades >= minTrades
-                && (bestInSample is null || result.Metrics.Sharpe > bestInSample.Metrics.Sharpe))
+            var foldStart = foldStarts[f];
+            var foldEnd = f + 1 < foldStarts.Length ? foldStarts[f + 1] - 1 : bars.Count - 1;
+
+            // Dentro da amostra: tudo antes da janela (âncora no início do período).
+            var inSampleBars = bars.Take(foldStart).ToList();
+            BacktestResult? bestInSample = null;
+            foreach (var parameters in definition.Grid())
             {
-                bestInSample = result;
+                var result = BacktestEngine.Run(inSampleBars, definition.Create(parameters), parameters, instrument, settings, start);
+                if (result.Metrics.Trades >= minTrades
+                    && (bestInSample is null || result.Metrics.Sharpe > bestInSample.Metrics.Sharpe))
+                {
+                    bestInSample = result;
+                }
             }
+
+            var chosen = bestInSample?.Parameters ?? definition.DefaultParameters();
+            var window = bars.Take(foldEnd + 1).ToList();
+            var outOfSample = BacktestEngine.Run(window, definition.Create(chosen), chosen, instrument, settings, foldStart);
+            var m = outOfSample.Metrics;
+            folds.Add(new FoldResult(bars[foldStart].Date, bars[foldEnd].Date, chosen.Values, m.Sharpe, m.TotalReturnPercent,
+                m.BenchmarkReturnPercent, m.RiskFreeReturnPercent, m.Trades));
+            oosTrades.AddRange(outOfSample.Trades);
+            worstDrawdown = Math.Max(worstDrawdown, m.MaxDrawdownPercent);
+            lastInSample = bestInSample;
+            lastChosen = chosen;
         }
 
-        var chosen = bestInSample?.Parameters ?? definition.DefaultParameters();
-        var outOfSample = BacktestEngine.Run(bars, definition.Create(chosen), chosen, instrument, settings, split);
-        var m = outOfSample.Metrics;
+        static decimal Compound(IEnumerable<decimal> percents) =>
+            Math.Round((percents.Aggregate(1m, (acc, p) => acc * (1m + (p / 100m))) - 1m) * 100m, 2);
+
+        var nets = oosTrades.Select(t => (double)t.NetProfit).ToList();
+        var mean = nets.Count > 0 ? nets.Average() : 0d;
+        var sd = nets.Count > 1 ? Math.Sqrt(nets.Sum(x => (x - mean) * (x - mean)) / (nets.Count - 1)) : 0d;
+        var margin = nets.Count > 1 ? 1.96 * sd / Math.Sqrt(nets.Count) : 0d;
 
         return new ComparisonRow(
             instrument.Symbol,
             definition.Key,
-            chosen.Values,
-            bestInSample?.Metrics.Sharpe ?? 0m,
-            bestInSample?.Metrics.TotalReturnPercent ?? 0m,
-            m.Sharpe,
-            m.TotalReturnPercent,
-            m.MaxDrawdownPercent,
-            m.Trades,
-            m.BenchmarkReturnPercent,
-            m.RiskFreeReturnPercent);
+            (lastChosen ?? definition.DefaultParameters()).Values,
+            lastInSample?.Metrics.Sharpe ?? 0m,
+            lastInSample?.Metrics.TotalReturnPercent ?? 0m,
+            Math.Round(folds.Average(x => x.Sharpe), 2),
+            Compound(folds.Select(x => x.ReturnPercent)),
+            worstDrawdown,
+            folds.Sum(x => x.Trades),
+            Compound(folds.Select(x => x.BenchmarkReturnPercent)),
+            Compound(folds.Select(x => x.RiskFreeReturnPercent)),
+            folds.Count,
+            folds.Count(x => x.ReturnPercent > x.RiskFreeReturnPercent),
+            folds.Count(x => x.ReturnPercent > x.BenchmarkReturnPercent),
+            Math.Round((decimal)mean, 2),
+            Math.Round((decimal)margin, 2),
+            folds);
     }
 
+    /// <summary>
+    /// Ranking por Sharpe médio fora da amostra, só com os ativos em que a estratégia operou; estratégia que não
+    /// operou em nenhum ativo vai para o fim (Sharpe zero de quem ficou parado não é mérito).
+    /// </summary>
     private static List<StrategyRanking> Rank(IReadOnlyList<ComparisonRow> rows) =>
         rows.GroupBy(r => r.StrategyKey)
-            .Select(g => new StrategyRanking(
-                g.Key,
-                StrategyCatalog.Get(g.Key).Name,
-                g.Count(),
-                Math.Round(g.Average(r => r.OutOfSampleSharpe), 2),
-                Math.Round(g.Average(r => r.OutOfSampleReturnPercent), 2),
-                g.Max(r => r.OutOfSampleMaxDrawdownPercent),
-                Math.Round(100m * g.Count(r => r.OutOfSampleReturnPercent > r.OutOfSampleBenchmarkReturnPercent) / g.Count(), 0),
-                Math.Round(100m * g.Count(r => r.OutOfSampleReturnPercent > r.OutOfSampleRiskFreeReturnPercent) / g.Count(), 0)))
-            .OrderByDescending(r => r.AverageOutOfSampleSharpe)
+            .Select(g =>
+            {
+                var traded = g.Where(r => r.OutOfSampleTrades > 0).ToList();
+                var basis = traded.Count > 0 ? traded : g.ToList();
+                return new StrategyRanking(
+                    g.Key,
+                    StrategyCatalog.Get(g.Key).Name,
+                    g.Count(),
+                    Math.Round(basis.Average(r => r.OutOfSampleSharpe), 2),
+                    Math.Round(basis.Average(r => r.OutOfSampleReturnPercent), 2),
+                    g.Max(r => r.OutOfSampleMaxDrawdownPercent),
+                    Math.Round(100m * basis.Count(r => r.OutOfSampleReturnPercent > r.OutOfSampleBenchmarkReturnPercent) / basis.Count, 0),
+                    Math.Round(100m * basis.Count(r => r.OutOfSampleReturnPercent > r.OutOfSampleRiskFreeReturnPercent) / basis.Count, 0),
+                    traded.Count,
+                    Math.Round(100m * basis.Sum(r => r.FoldsBeatingRiskFree) / Math.Max(1, basis.Sum(r => r.Folds)), 0));
+            })
+            .OrderByDescending(r => r.AssetsWithTrades > 0)
+            .ThenByDescending(r => r.AverageOutOfSampleSharpe)
             .ToList();
 }

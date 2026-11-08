@@ -52,7 +52,10 @@ public sealed record CompareDto(
     DateOnly? From,
     DateOnly? To,
     decimal? InSamplePercent,
-    SimulationDto? Simulation);
+    SimulationDto? Simulation,
+    Domain.MarketData.Timeframe? Timeframe = null,
+    bool? FlattenAtDayEnd = null,
+    int? Folds = null);
 
 public sealed record BacktestSummaryDto(
     Guid Id,
@@ -136,7 +139,10 @@ internal static class BacktestEndpoints
                     dto.From,
                     dto.To,
                     (dto.Simulation ?? new SimulationDto(null, null, null, null, null)).ToSettings(),
-                    dto.InSamplePercent ?? 70m),
+                    dto.InSamplePercent ?? 70m,
+                    dto.Timeframe ?? Domain.MarketData.Timeframe.D1,
+                    dto.FlattenAtDayEnd ?? false,
+                    dto.Folds ?? 1),
                 ct));
 
         return app;

@@ -4,7 +4,7 @@ using RoboB3.Domain.Strategies;
 
 namespace RoboB3.Application.Backtesting;
 
-public sealed record ScanRequest(DateOnly? From, DateOnly? To, decimal MinDailyVolumeMillions = 50m, decimal InSamplePercent = 70m);
+public sealed record ScanRequest(DateOnly? From, DateOnly? To, decimal MinDailyVolumeMillions = 50m, decimal InSamplePercent = 70m, int Folds = 1);
 
 /// <summary>Um ativo na varredura: liquidez e a estratégia escolhida DENTRO da amostra, com o resultado FORA dela.</summary>
 public sealed record ScanItem(
@@ -81,7 +81,7 @@ public sealed class ScannerService(
         }
 
         var result = await comparison.CompareAsync(
-            new ComparisonRequest(liquid, request.From, request.To, new SimulationSettings(), request.InSamplePercent), cancellationToken);
+            new ComparisonRequest(liquid, request.From, request.To, new SimulationSettings(), request.InSamplePercent, Folds: request.Folds), cancellationToken);
         var names = universe.ToDictionary(a => a.Symbol, a => a.Name);
         foreach (var symbol in liquid)
         {
@@ -97,8 +97,12 @@ public sealed class ScannerService(
             var chosen = rows.OrderByDescending(r => r.InSampleSharpe).First();
             var beatsCdi = chosen.OutOfSampleReturnPercent > chosen.OutOfSampleRiskFreeReturnPercent;
             var beatsHold = chosen.OutOfSampleReturnPercent > chosen.OutOfSampleBenchmarkReturnPercent;
+            var consistent = chosen.Folds <= 1 || chosen.FoldsBeatingRiskFree * 2 > chosen.Folds;
+            var edge = chosen.OutOfSampleTrades < 2 || chosen.ExpectancyPerTrade - chosen.ExpectancyMargin95 > 0;
             var (verdict, reason) = (beatsCdi, beatsHold, chosen.OutOfSampleTrades >= MinTradesForCandidate) switch
             {
+                (true, true, true) when !consistent => ("observar", $"Venceu no total, mas só em {chosen.FoldsBeatingRiskFree} de {chosen.Folds} janelas: depende do período."),
+                (true, true, true) when !edge => ("observar", $"Venceu, mas a margem de 95% (± R$ {chosen.ExpectancyMargin95:N0}) engole a média por operação (R$ {chosen.ExpectancyPerTrade:N0}): pode ser acaso."),
                 (true, true, true) => ("candidato", "Venceu o CDI e o comprar e segurar fora da amostra. Confirme com período novo e na demo."),
                 (true, true, false) => ("observar", $"Venceu os dois, mas com só {chosen.OutOfSampleTrades} operações: pouco para confiar."),
                 (true, false, _) => ("observar", "Venceu o CDI, mas não o comprar e segurar."),

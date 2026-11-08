@@ -24,7 +24,21 @@ public sealed record ComparisonRequest(
     DateOnly? From,
     DateOnly? To,
     SimulationSettings Settings,
-    decimal InSamplePercent = 70m);
+    decimal InSamplePercent = 70m,
+    Domain.MarketData.Timeframe Timeframe = Domain.MarketData.Timeframe.D1,
+    bool FlattenAtDayEnd = false,
+    int Folds = 1);
+
+/// <summary>Uma janela fora da amostra do walk-forward: parâmetros escolhidos com tudo o que veio antes dela.</summary>
+public sealed record FoldResult(
+    DateOnly From,
+    DateOnly To,
+    IReadOnlyDictionary<string, decimal> Parameters,
+    decimal Sharpe,
+    decimal ReturnPercent,
+    decimal BenchmarkReturnPercent,
+    decimal RiskFreeReturnPercent,
+    int Trades);
 
 /// <summary>Resultado de uma estratégia num ativo: parâmetros escolhidos dentro da amostra, avaliados fora dela.</summary>
 public sealed record ComparisonRow(
@@ -38,7 +52,13 @@ public sealed record ComparisonRow(
     decimal OutOfSampleMaxDrawdownPercent,
     int OutOfSampleTrades,
     decimal OutOfSampleBenchmarkReturnPercent,
-    decimal OutOfSampleRiskFreeReturnPercent);
+    decimal OutOfSampleRiskFreeReturnPercent,
+    int Folds = 1,
+    int FoldsBeatingRiskFree = 0,
+    int FoldsBeatingBenchmark = 0,
+    decimal ExpectancyPerTrade = 0,
+    decimal ExpectancyMargin95 = 0,
+    IReadOnlyList<FoldResult>? FoldResults = null);
 
 public sealed record StrategyRanking(
     string StrategyKey,
@@ -48,7 +68,9 @@ public sealed record StrategyRanking(
     decimal AverageOutOfSampleReturnPercent,
     decimal WorstOutOfSampleDrawdownPercent,
     decimal BeatsBuyAndHoldPercent,
-    decimal BeatsRiskFreePercent);
+    decimal BeatsRiskFreePercent,
+    int AssetsWithTrades = 0,
+    decimal FoldsBeatingRiskFreePercent = 0);
 
 public sealed record ComparisonResult(
     DateOnly InSampleFrom,

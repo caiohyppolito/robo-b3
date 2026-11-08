@@ -270,6 +270,12 @@ export interface ComparisonRow {
   outOfSampleTrades: number;
   outOfSampleBenchmarkReturnPercent: number;
   outOfSampleRiskFreeReturnPercent: number;
+  folds: number;
+  foldsBeatingRiskFree: number;
+  foldsBeatingBenchmark: number;
+  expectancyPerTrade: number;
+  expectancyMargin95: number;
+  foldResults: { from: string; to: string; sharpe: number; returnPercent: number; riskFreeReturnPercent: number; benchmarkReturnPercent: number; trades: number }[] | null;
 }
 
 export interface StrategyRanking {
@@ -281,6 +287,8 @@ export interface StrategyRanking {
   worstOutOfSampleDrawdownPercent: number;
   beatsBuyAndHoldPercent: number;
   beatsRiskFreePercent: number;
+  assetsWithTrades: number;
+  foldsBeatingRiskFreePercent: number;
 }
 
 export interface ComparisonResult {
@@ -312,6 +320,9 @@ export interface CompareRequest {
   to?: string;
   inSamplePercent?: number;
   simulation: Simulation;
+  timeframe?: Timeframe;
+  flattenAtDayEnd?: boolean;
+  folds?: number;
 }
 
 export const backtestApi = {

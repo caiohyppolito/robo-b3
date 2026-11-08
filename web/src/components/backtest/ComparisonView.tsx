@@ -36,6 +36,7 @@ export function ComparisonView({ result, strategies }: { result: ComparisonResul
               <th className="num">Pior drawdown</th>
               <th className="num">Vence comprar e segurar</th>
               <th className="num">Vence CDI</th>
+              <th className="num">Janelas acima do CDI</th>
             </tr>
           </thead>
           <tbody>
@@ -44,7 +45,7 @@ export function ComparisonView({ result, strategies }: { result: ComparisonResul
                 <td>{i + 1}</td>
                 <td>
                   <strong>{r.strategyName}</strong>
-                  <span className="muted small block">{r.assets} ativos</span>
+                  <span className="muted small block">operou em {r.assetsWithTrades} de {r.assets} ativos</span>
                 </td>
                 <td className="num">{formatNumber(r.averageOutOfSampleSharpe)}</td>
                 <td className={`num ${r.averageOutOfSampleReturnPercent >= 0 ? "up" : "down"}`}>
@@ -53,6 +54,7 @@ export function ComparisonView({ result, strategies }: { result: ComparisonResul
                 <td className="num">{formatPercent(r.worstOutOfSampleDrawdownPercent)}</td>
                 <td className="num">{r.strategyKey === "buy-and-hold" ? "—" : formatPercent(r.beatsBuyAndHoldPercent)}</td>
                 <td className="num">{formatPercent(r.beatsRiskFreePercent)}</td>
+                <td className="num">{formatPercent(r.foldsBeatingRiskFreePercent)}</td>
               </tr>
             ))}
           </tbody>
@@ -73,6 +75,8 @@ export function ComparisonView({ result, strategies }: { result: ComparisonResul
                 <th className="num">Comprar e segurar</th>
                 <th className="num">Drawdown</th>
                 <th className="num">Operações</th>
+                <th className="num">Por operação (± 95%)</th>
+                <th className="num">Janelas &gt; CDI</th>
               </tr>
             </thead>
             <tbody>
@@ -87,6 +91,10 @@ export function ComparisonView({ result, strategies }: { result: ComparisonResul
                   <td className="num">{formatSignedPercent(r.outOfSampleBenchmarkReturnPercent)}</td>
                   <td className="num">{formatPercent(r.outOfSampleMaxDrawdownPercent)}</td>
                   <td className="num">{r.outOfSampleTrades}</td>
+                  <td className={`num ${r.outOfSampleTrades > 1 && r.expectancyPerTrade - r.expectancyMargin95 > 0 ? "up" : "muted"}`}>
+                    {r.outOfSampleTrades > 1 ? `${formatNumber(r.expectancyPerTrade, 0)} ± ${formatNumber(r.expectancyMargin95, 0)}` : "—"}
+                  </td>
+                  <td className="num">{r.foldsBeatingRiskFree}/{r.folds}</td>
                 </tr>
               ))}
             </tbody>

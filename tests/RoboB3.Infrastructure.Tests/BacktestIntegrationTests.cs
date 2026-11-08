@@ -90,7 +90,11 @@ public class BacktestIntegrationTests
         Assert.Equal(StrategyCatalog.All.Count, result.Ranking.Count);
         Assert.Contains(result.Skipped, s => s.StartsWith("ITUB4", StringComparison.Ordinal));
         Assert.True(result.OutOfSampleFrom > result.InSampleFrom);
-        Assert.True(result.Ranking.Zip(result.Ranking.Skip(1)).All(p => p.First.AverageOutOfSampleSharpe >= p.Second.AverageOutOfSampleSharpe));
+        // Estratégias que operaram vêm antes; em cada grupo, do maior para o menor Sharpe fora da amostra.
+        Assert.True(result.Ranking.Zip(result.Ranking.Skip(1)).All(p =>
+            (p.First.AssetsWithTrades > 0) != (p.Second.AssetsWithTrades > 0)
+                ? p.First.AssetsWithTrades > 0
+                : p.First.AverageOutOfSampleSharpe >= p.Second.AverageOutOfSampleSharpe));
     }
 }
 

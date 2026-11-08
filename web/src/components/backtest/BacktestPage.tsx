@@ -47,6 +47,7 @@ export function BacktestPage() {
   const [result, setResult] = useState<BacktestDetail | null>(null);
   const [comparison, setComparison] = useState<ComparisonResult | null>(null);
   const [view, setView] = useState<"resultado" | "operacoes" | "eventos">("resultado");
+  const [folds, setFolds] = useState(4);
   useEffect(() => setView("resultado"), [result]);
 
   // Futuros (WIN/WDO) só têm barras intradiárias, vindas do MT5.
@@ -97,7 +98,8 @@ export function BacktestPage() {
     setRunning("compare");
     setError(null);
     try {
-      setComparison(await backtestApi.compare({ from, to, simulation }));
+      // Sem ativo escolhido para a comparação: no diário vão as ações e ETFs; no intradiário, WIN e WDO.
+      setComparison(await backtestApi.compare({ from, to, simulation, timeframe, flattenAtDayEnd: timeframe !== "D1" && flattenAtDayEnd, folds }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha na comparação");
     } finally {
@@ -238,6 +240,13 @@ export function BacktestPage() {
         </details>
 
         {error && <p className="callout bad">{error}</p>}
+        <div className="form-grid" style={{ marginTop: "0.75rem" }}>
+          <label>
+            Janelas fora da amostra (comparação)
+            <input type="number" min={1} max={12} step={1} value={folds} onChange={(e) => setFolds(Number(e.target.value))} />
+            <span className="muted small">Walk-forward: cada janela é avaliada com parâmetros escolhidos no que veio antes dela.</span>
+          </label>
+        </div>
         <p className="callout" style={{ marginTop: "0.75rem" }}>
           O sinal sai no fechamento do candle e a ordem é executada na abertura do seguinte, com o mesmo gestor de risco do robô. Sem taxa de CDI
           informada, o caixa rende o CDI diário do Banco Central.
